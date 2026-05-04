@@ -1,0 +1,2008 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>WXH的学习日志</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.292.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #f0f4ff; }
+    * { box-sizing: border-box; }
+    #loading-fallback {
+      position: fixed; inset: 0; background: #f0f4ff;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: system-ui, sans-serif; color: #4b6cb7;
+      z-index: 9999;
+    }
+    #loading-fallback .spinner {
+      width: 36px; height: 36px; border: 3px solid #dbeafe;
+      border-top-color: #2563eb; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="loading-fallback">
+    <div class="spinner"></div>
+    <div style="font-size:15px;font-weight:600;">加载中...</div>
+    <div style="font-size:12px;margin-top:6px;opacity:0.6;">首次加载需要几秒钟</div>
+  </div>
+  <div id="root"></div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const observer = new MutationObserver(() => {
+        if (document.getElementById('root').children.length > 0) {
+          const el = document.getElementById('loading-fallback');
+          if (el) el.style.display = 'none';
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.getElementById('root'), { childList: true, subtree: true });
+    });
+  </script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // ── Lucide icons ──
+    // lucide 不同版本的 icons 对象 key 命名不一致：
+    // 老版本：'pencil', 'trash-2'（kebab-case）
+    // 新版本：'Pencil', 'Trash2'（PascalCase）
+    // 所以我们写一个兼容函数尝试多种命名方式
+    function findLucideIcon(name) {
+      const icons = lucide.icons || {};
+      // 1. 直接查
+      if (icons[name]) return icons[name];
+      // 2. kebab-case → PascalCase （pencil → Pencil, trash-2 → Trash2, alert-circle → AlertCircle）
+      const pascal = name.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+      if (icons[pascal]) return icons[pascal];
+      // 3. PascalCase → kebab-case
+      const kebab = name.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z])(\d)/g, '$1-$2').toLowerCase();
+      if (icons[kebab]) return icons[kebab];
+      // 4. 去掉横线和数字间的横线（trash-2 → Trash2）
+      const compact = pascal.replace(/-/g, '');
+      if (icons[compact]) return icons[compact];
+      return null;
+    }
+
+    const LucideIcon = ({ name, size=24, strokeWidth=2, style, className }) => {
+      const iconData = findLucideIcon(name);
+      if (!iconData) {
+        // 找不到时降级：显示一个圆圈，避免布局崩
+        return (
+          <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
+            viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+            style={style} className={className}>
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+        );
+      }
+      const attrs = iconData[1] || {};
+      const paths = iconData[2] || [];
+      // paths 可能是 array of arrays（新版）或 array of strings（老版），统一处理
+      const innerHtml = paths.map(p => {
+        if (typeof p === 'string') return p;
+        if (Array.isArray(p)) {
+          // 新版格式：['path', { d: '...' }]
+          const tag = p[0];
+          const attrs = p[1] || {};
+          const attrStr = Object.entries(attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
+          return `<${tag} ${attrStr} />`;
+        }
+        return '';
+      }).join('');
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
+          viewBox={attrs.viewBox || "0 0 24 24"} fill="none" stroke="currentColor"
+          strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+          style={style} className={className}
+          dangerouslySetInnerHTML={{ __html: innerHtml }}
+        />
+      );
+    };
+    const X            = (p) => <LucideIcon name="x" {...p} />;
+    const Check        = (p) => <LucideIcon name="check" {...p} />;
+    const Plus         = (p) => <LucideIcon name="plus" {...p} />;
+    const ChevronDown  = (p) => <LucideIcon name="chevron-down" {...p} />;
+    const ChevronUp    = (p) => <LucideIcon name="chevron-up" {...p} />;
+    const ChevronLeft  = (p) => <LucideIcon name="chevron-left" {...p} />;
+    const ChevronRight = (p) => <LucideIcon name="chevron-right" {...p} />;
+    const Pencil       = (p) => <LucideIcon name="pencil" {...p} />;
+    const Archive      = (p) => <LucideIcon name="archive" {...p} />;
+    const Trophy       = (p) => <LucideIcon name="trophy" {...p} />;
+
+    // ── Supabase ──
+    const SUPABASE_URL  = "https://ettxqjdtrbjqoctwmprw.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0dHhxamR0cmJqcW9jdHdtcHJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTI5NzYsImV4cCI6MjA5MjE2ODk3Nn0.o5JdtIHNIRu2Bthbyckh6PqmsTF09u31wPr12xhBaYI";
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    function genId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }
+    function todayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function formatDateDisplay(str) {
+      const d = new Date(str + 'T00:00:00');
+      return `${d.getMonth()+1}月${d.getDate()}日`;
+    }
+    function relativeDate(isoStr) {
+      const d = new Date(isoStr);
+      const now = new Date();
+      const days = Math.floor((now - d) / (1000*60*60*24));
+      if (days === 0) return "今天";
+      if (days === 1) return "昨天";
+      if (days < 7) return `${days}天前`;
+      if (days < 30) return `${Math.floor(days/7)}周前`;
+      return `${d.getMonth()+1}/${d.getDate()}`;
+    }
+
+    // ── DB CRUD ──
+    async function loadProjects() {
+      const { data, error } = await db.from("study_projects").select("*").order("archived", { ascending: true }).order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }
+    async function updateProject(id, patch) {
+      const { error } = await db.from("study_projects").update(patch).eq("id", id);
+      if (error) throw error;
+    }
+
+    async function loadLogs(projectId) {
+      const { data, error } = await db.from("study_logs").select("*").eq("project_id", projectId).order("id", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }
+    async function insertLog(log) {
+      const { error } = await db.from("study_logs").insert(log);
+      if (error) throw error;
+    }
+    async function deleteLog(id) {
+      const { error } = await db.from("study_logs").delete().eq("id", id);
+      if (error) throw error;
+    }
+
+    async function loadNotes(projectId) {
+      const { data, error } = await db.from("study_notes").select("*").eq("project_id", projectId).order("id", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }
+    async function insertNote(note) {
+      const { error } = await db.from("study_notes").insert(note);
+      if (error) throw error;
+    }
+    async function updateNote(id, patch) {
+      const { error } = await db.from("study_notes").update(patch).eq("id", id);
+      if (error) throw error;
+    }
+    async function deleteNote(id) {
+      const { error } = await db.from("study_notes").delete().eq("id", id);
+      if (error) throw error;
+    }
+
+    async function loadModuleMeta(projectId) {
+      const { data, error } = await db.from("study_module_meta").select("*").eq("project_id", projectId);
+      if (error) throw error;
+      return data || [];
+    }
+    async function upsertModuleMeta(meta) {
+      // 先查再决定 insert/update
+      const { data: existing } = await db.from("study_module_meta")
+        .select("id").eq("project_id", meta.project_id).eq("module_id", meta.module_id).maybeSingle();
+      if (existing) {
+        const { error } = await db.from("study_module_meta")
+          .update({ subtitle: meta.subtitle, updated_at: new Date().toISOString() })
+          .eq("id", existing.id);
+        if (error) throw error;
+        return existing.id;
+      } else {
+        const id = genId();
+        const { error } = await db.from("study_module_meta").insert({ ...meta, id, updated_at: new Date().toISOString() });
+        if (error) throw error;
+        return id;
+      }
+    }
+
+    // ================================================================
+    // PROJECT PLANS — 每个项目的计划硬编码
+    // ================================================================
+    const PROJECT_PLANS = {
+      llm: [
+        {
+          id: "m1",
+          title: "第一阶段：基础夯实",
+          defaultSubtitle: "约 4-5 周",
+          emoji: "🧱",
+          color: "#2563eb",
+          colorSoft: "#dbeafe",
+          items: [
+            // 全景认知
+            { id: "m1-1", type: "video", title: "Karpathy — State of GPT", desc: "B站 BV1X24y1A7Rz · 约40min · GPT训练四阶段速览", url: "https://www.bilibili.com/video/BV1X24y1A7Rz" },
+            { id: "m1-2", type: "video", title: "Deep Dive into LLMs · 上半段", desc: "B站 BV1L2XSYgEoH P9 前半 · 约1.5h · 预训练部分", url: "https://www.bilibili.com/video/BV1L2XSYgEoH" },
+            { id: "m1-3", type: "video", title: "Deep Dive into LLMs · 下半段", desc: "B站 BV1L2XSYgEoH P9 后半 · 约2h · SFT/RLHF部分", url: "https://www.bilibili.com/video/BV1L2XSYgEoH" },
+            // Transformer 理论
+            { id: "m1-4", type: "video", title: "李宏毅 — Self-Attention原理", desc: "Q/K/V是怎么算出来的，为什么要 softmax(QK^T/√d)V" },
+            { id: "m1-5", type: "video", title: "李宏毅 — Multi-Head + 位置编码", desc: "多头的意义、绝对位置编码 vs 相对位置编码" },
+            { id: "m1-6", type: "video", title: "李宏毅 — Transformer完整架构", desc: "Encoder/Decoder、残差与LayerNorm、FFN" },
+            // Transformer 八股
+            { id: "m1-7", type: "read", title: "八股｜Self-Attention 高频题", desc: "Q/K/V物理意义、为什么除以√dk、softmax梯度问题", url: "https://zhuanlan.zhihu.com/p/1997438356703946646" },
+            { id: "m1-8", type: "read", title: "八股｜归一化与残差", desc: "Pre-Norm vs Post-Norm 区别、LayerNorm vs RMSNorm、为什么有残差" },
+            { id: "m1-9", type: "read", title: "八股｜位置编码", desc: "绝对/相对位置编码、RoPE 原理、ALiBi、长度外推" },
+            { id: "m1-10", type: "read", title: "八股｜注意力变体", desc: "MHA / MQA / GQA 区别、FlashAttention 优化思路" },
+            { id: "m1-11", type: "read", title: "八股｜KV Cache 原理", desc: "为什么能加速、显存占用、PagedAttention 思路" },
+            // Transformer 动手
+            { id: "m1-12", type: "code", title: "Build GPT · 第一部分", desc: "B站 BV11yHXeuE9d · 数据准备 + bigram baseline", url: "https://www.bilibili.com/video/BV11yHXeuE9d" },
+            { id: "m1-13", type: "code", title: "Build GPT · 第二部分", desc: "手写 self-attention 模块和 multi-head" },
+            { id: "m1-14", type: "code", title: "Build GPT · 第三部分", desc: "完整训练流程，跑出能生成莎士比亚风格的小模型" },
+            { id: "m1-15", type: "code", title: "手撕｜MHA 实现", desc: "github.com/AIR-hl/llm-interview-code · 不看答案先自己写", url: "https://github.com/AIR-hl/llm-interview-code" },
+            { id: "m1-16", type: "code", title: "手撕｜RoPE 实现", desc: "理解旋转矩阵的作用，复杂数版本和实数版本" },
+            { id: "m1-17", type: "code", title: "手撕｜RMSNorm 实现", desc: "对比 LayerNorm 看简化在哪里" },
+          ],
+        },
+        {
+          id: "m2",
+          title: "第二阶段：后训练技术",
+          defaultSubtitle: "约 2-3 周",
+          emoji: "⚙️",
+          color: "#0284c7",
+          colorSoft: "#e0f2fe",
+          items: [
+            // 理论
+            { id: "m2-1", type: "read", title: "后训练全景：从SFT到Agentic RL", desc: "qingkeai.online · 厨师比喻讲清整条对齐技术链", url: "https://qingkeai.online/archives/RLHF-GRPO-AgenticRL" },
+            { id: "m2-2", type: "read", title: "知乎｜大模型后训练简要总结", desc: "2026.02更新 · 补充全景文章里的细节", url: "https://zhuanlan.zhihu.com/p/2003041773023428952" },
+            { id: "m2-3", type: "video", title: "视频｜SFT 详解", desc: "B站搜「SFT 微调原理」选播放量最高的中文讲解" },
+            { id: "m2-4", type: "video", title: "视频｜RLHF（PPO）详解", desc: "B站搜「RLHF PPO 原理」 · 重点是奖励模型 + PPO 流程" },
+            { id: "m2-5", type: "video", title: "视频｜DPO 原理与推导", desc: "B站搜「DPO 原理」 · 重点理解 loss function 的直觉" },
+            { id: "m2-6", type: "video", title: "视频｜GRPO + DeepSeek-R1", desc: "B站搜「GRPO DeepSeek-R1」 · 为什么不需要 critic model" },
+            // 八股
+            { id: "m2-7", type: "read", title: "八股｜SFT 相关", desc: "数据格式、loss 只算 response 部分、灾难性遗忘怎么办", url: "https://zhuanlan.zhihu.com/p/1921990540699869821" },
+            { id: "m2-8", type: "read", title: "八股｜对齐方法对比", desc: "RLHF / DPO / GRPO 各自适用场景、优缺点对比" },
+            { id: "m2-9", type: "read", title: "八股｜LoRA / QLoRA 原理", desc: "低秩分解的直觉、r 和 alpha 怎么选、QLoRA 的量化" },
+            // 动手
+            { id: "m2-10", type: "code", title: "TRL｜跑通 SFT 流程", desc: "Qwen2.5-0.5B/1.5B + 小指令数据集，单卡跑通" },
+            { id: "m2-11", type: "code", title: "TRL｜LoRA 微调实战", desc: "在 SFT 基础上加 LoRA，对比全参微调显存占用" },
+            { id: "m2-12", type: "code", title: "TRL｜跑通 DPO 流程", desc: "构造 preference pair → DPO 训练 → 简单评测" },
+            { id: "m2-13", type: "code", title: "手撕｜SFT loss 计算", desc: "理解 mask 是怎么实现「只算 response 部分」的" },
+            { id: "m2-14", type: "code", title: "手撕｜DPO loss 实现", desc: "github.com/AIR-hl/llm-interview-code · DPO.ipynb", url: "https://github.com/AIR-hl/llm-interview-code" },
+            // 面经
+            { id: "m2-15", type: "read", title: "面经｜牛客大模型 第一批", desc: "刷10篇真题，倒推自己薄弱点", url: "https://www.nowcoder.com/creation/subject/278ae3e75eca413fa6f96d70cd03ae57" },
+            { id: "m2-16", type: "read", title: "面经｜牛客大模型 第二批", desc: "再刷10篇，重点关注高频出现的题目" },
+          ],
+        },
+        {
+          id: "m3",
+          title: "第三阶段：RAG + Agent",
+          defaultSubtitle: "约 1-2 周",
+          emoji: "🔗",
+          color: "#0891b2",
+          colorSoft: "#cffafe",
+          items: [
+            { id: "m3-1", type: "video", title: "视频｜RAG 原理与流程", desc: "B站搜「RAG 原理实战」 · 分块/Embedding/检索/重排/生成" },
+            { id: "m3-2", type: "video", title: "吴恩达 Agent 教程 · 上", desc: "ReAct、CoT、ToT 等核心范式" },
+            { id: "m3-3", type: "video", title: "吴恩达 Agent 教程 · 下", desc: "工具调用、Function Calling、多 Agent 协作" },
+            { id: "m3-4", type: "code", title: "动手｜RAG 系统（基础版）", desc: "LangChain + 几篇 PDF 做知识库，能检索能回答" },
+            { id: "m3-5", type: "code", title: "动手｜RAG 优化", desc: "加入混合检索（BM25+向量）+ 重排序 cross-encoder" },
+            { id: "m3-6", type: "code", title: "动手｜简单 ReAct Agent", desc: "Function Calling 实现一个能用工具的小 Agent" },
+            { id: "m3-7", type: "read", title: "八股｜RAG/Agent 高频题", desc: "RAG 流程、分块策略、Agent 范式对比、Function Call 实现", url: "https://github.com/Lau-Jonathan/LLM-Agent-Interview-Guide" },
+          ],
+        },
+        {
+          id: "m4",
+          title: "第四阶段：项目 + 冲刺",
+          defaultSubtitle: "约 4 周",
+          emoji: "🚀",
+          color: "#4f46e5",
+          colorSoft: "#ede9fe",
+          items: [
+            { id: "m4-1", type: "code", title: "项目｜确定方向 + 技术方案", desc: "和 Claude 讨论后定方向，写技术方案文档" },
+            { id: "m4-2", type: "code", title: "项目｜数据准备", desc: "数据收集 / 清洗 / 构造，准备好训练所需的数据集" },
+            { id: "m4-3", type: "code", title: "项目｜模型训练", desc: "跑通训练流程，可能多轮迭代" },
+            { id: "m4-4", type: "code", title: "项目｜评测与优化", desc: "定义评测指标，对比 baseline，跑出可呈现的结果" },
+            { id: "m4-5", type: "code", title: "项目｜整理面试讲解版", desc: "把项目讲明白：背景、技术选型、关键难点、效果数据" },
+            { id: "m4-6", type: "video", title: "进阶｜Karpathy reproduce GPT-2", desc: "B站 BV1r6421f736 · 训练优化：混合精度/FlashAttention/DDP", url: "https://www.bilibili.com/video/BV1r6421f736" },
+            { id: "m4-7", type: "read", title: "八股｜推理优化专项", desc: "KV Cache、vLLM PagedAttention、量化(INT8/INT4)、MoE路由" },
+            { id: "m4-8", type: "read", title: "八股｜全模块查漏补缺", desc: "wdndev/llm_interview_note 过一遍，重点看自己薄弱章节", url: "https://github.com/wdndev/llm_interview_note" },
+            { id: "m4-9", type: "read", title: "简历｜重新组织三段式", desc: "数字人/多模态科研 + 大模型项目 + RAG/Agent 实践" },
+            { id: "m4-10", type: "read", title: "简历｜整理投递目标公司", desc: "字节豆包/腾讯混元/阿里通义/智谱/MiniMax 等" },
+            { id: "m4-11", type: "code", title: "投递｜开始投递 + 面试", desc: "前面所有努力的兑现时刻 🎯" },
+          ],
+        },
+      ],
+    };
+
+    const TYPE_CONFIG = {
+      video: { label: "视频", color: "#b45309", bg: "#fef3c7" },
+      code:  { label: "代码", color: "#0f766e", bg: "#ccfbf1" },
+      read:  { label: "阅读", color: "#6d28d9", bg: "#ede9fe" },
+    };
+
+    // ================================================================
+    // App
+    // ================================================================
+    function App() {
+      const [projects, setProjects] = useState([]);
+      const [activeProjectId, setActiveProjectId] = useState(null); // null = 主界面
+      const [loading, setLoading] = useState(true);
+      const [toast, setToast] = useState(null);
+      const toastRef = useRef(null);
+
+      useEffect(() => {
+        loadProjects()
+          .then(setProjects)
+          .catch(e => { console.error(e); showToast("加载失败"); })
+          .finally(() => setLoading(false));
+      }, []);
+
+      const showToast = (msg) => {
+        setToast(msg);
+        if (toastRef.current) clearTimeout(toastRef.current);
+        toastRef.current = setTimeout(() => setToast(null), 2000);
+      };
+
+      const handleArchiveProject = async (projectId, summary) => {
+        const old = projects.find(p => p.id === projectId);
+        if (!old) return;
+        const archivedAt = new Date().toISOString();
+        setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: true, archived_at: archivedAt, summary } : p));
+        try {
+          await updateProject(projectId, { archived: true, archived_at: archivedAt, summary });
+          showToast("已归档 🎉");
+          setActiveProjectId(null);
+        } catch(e) {
+          setProjects(prev => prev.map(p => p.id === projectId ? old : p));
+          showToast("归档失败");
+        }
+      };
+
+      const handleUnarchiveProject = async (projectId) => {
+        const old = projects.find(p => p.id === projectId);
+        if (!old) return;
+        setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: false, archived_at: null } : p));
+        try {
+          await updateProject(projectId, { archived: false, archived_at: null });
+          showToast("已恢复");
+        } catch(e) {
+          setProjects(prev => prev.map(p => p.id === projectId ? old : p));
+          showToast("操作失败");
+        }
+      };
+
+      if (loading) return <LoadingScreen />;
+
+      const activeProject = projects.find(p => p.id === activeProjectId);
+
+      return (
+        <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--ink)", fontFamily: "var(--font-body)" }}>
+          <GlobalStyles />
+          <div className="max-w-md mx-auto min-h-screen pb-28 relative paper-texture">
+            {!activeProject ? (
+              <HomePage projects={projects} onSelect={setActiveProjectId} onUnarchive={handleUnarchiveProject} />
+            ) : (
+              <ProjectPage
+                project={activeProject}
+                onBack={() => setActiveProjectId(null)}
+                onArchive={handleArchiveProject}
+                showToast={showToast}
+              />
+            )}
+            {toast && <div className="toast">{toast}</div>}
+          </div>
+        </div>
+      );
+    }
+
+    function LoadingScreen() {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
+          <GlobalStyles />
+          <div style={{ textAlign: "center" }}>
+            <div className="display" style={{ fontSize: 28, color: "var(--accent)", marginBottom: 8 }}>WXH的学习日志</div>
+            <div style={{ color: "var(--ink-faint)", fontSize: 14 }}>加载中...</div>
+          </div>
+        </div>
+      );
+    }
+
+    // ================================================================
+    // Home Page — 项目列表
+    // ================================================================
+    function HomePage({ projects, onSelect, onUnarchive }) {
+      const [showArchived, setShowArchived] = useState(false);
+      const active = projects.filter(p => !p.archived);
+      const archived = projects.filter(p => p.archived);
+
+      return (
+        <div className="animate-in">
+          <header className="px-5 pt-10 pb-5">
+            <div className="mono text-xs uppercase tracking-widest" style={{ color: "var(--ink-faint)" }}>Daydayup</div>
+            <h1 className="display text-4xl font-bold mt-1">学习日志</h1>
+            <div className="text-sm mt-2" style={{ color: "var(--ink-soft)" }}>记录每段学习的旅程</div>
+          </header>
+
+          <div className="px-5">
+            {/* 进行中 */}
+            <div className="mb-6">
+              <div className="flex items-baseline justify-between mb-3">
+                <h2 className="display text-lg font-semibold">进行中</h2>
+                <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{active.length} 项</span>
+              </div>
+              {active.length === 0 ? (
+                <div className="card p-6" style={{ textAlign: "center" }}>
+                  <div style={{ fontSize: 36, marginBottom: 8 }}>🌱</div>
+                  <div className="text-sm" style={{ color: "var(--ink-faint)" }}>还没有进行中的计划</div>
+                </div>
+              ) : (
+                active.map(p => <ProjectCard key={p.id} project={p} onClick={() => onSelect(p.id)} />)
+              )}
+            </div>
+
+            {/* 已归档 */}
+            {archived.length > 0 && (
+              <div className="mb-6">
+                <button onClick={() => setShowArchived(s => !s)} style={{
+                  width: "100%", background: "none", border: "none",
+                  cursor: "pointer", display: "flex", alignItems: "baseline",
+                  justifyContent: "space-between", padding: "0 0 12px",
+                }}>
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="display text-lg font-semibold" style={{ color: "var(--ink-soft)" }}>
+                      <Archive size={14} style={{ display: "inline", marginRight: 4, verticalAlign: "-1px" }} />
+                      已归档
+                    </h2>
+                    <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{archived.length} 项</span>
+                  </div>
+                  <ChevronDown size={16} style={{
+                    color: "var(--ink-faint)",
+                    transform: showArchived ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.3s ease",
+                  }} />
+                </button>
+                <div style={{
+                  maxHeight: showArchived ? "9999px" : "0px",
+                  opacity: showArchived ? 1 : 0,
+                  overflow: "hidden",
+                  transition: showArchived
+                    ? "max-height 0.4s ease-in-out, opacity 0.25s ease-in 0.05s"
+                    : "max-height 0.3s ease-in-out, opacity 0.15s ease-out",
+                }}>
+                  {archived.map(p => (
+                    <ArchivedProjectCard key={p.id} project={p} onClick={() => onSelect(p.id)} onUnarchive={() => onUnarchive(p.id)} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 提示 */}
+            <div className="card p-4 mt-6" style={{ background: "transparent", borderStyle: "dashed", textAlign: "center" }}>
+              <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+                想新增计划？告诉 Claude，他会帮你加进来 ✨
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function ProjectCard({ project, onClick }) {
+      // 异步加载该项目的进度统计
+      const [stats, setStats] = useState(null);
+      const planModules = PROJECT_PLANS[project.id] || [];
+      const totalItems = planModules.reduce((s, m) => s + m.items.length, 0);
+
+      useEffect(() => {
+        loadLogs(project.id).then(logs => {
+          const doneIds = new Set(logs.map(l => l.item_id));
+          const validDone = planModules.reduce((s, m) => s + m.items.filter(i => doneIds.has(i.id)).length, 0);
+          const lastLog = logs[0];
+          setStats({ done: validDone, lastLog });
+        }).catch(() => setStats({ done: 0, lastLog: null }));
+      }, [project.id]);
+
+      const pct = totalItems && stats ? Math.round(stats.done / totalItems * 100) : 0;
+
+      return (
+        <button onClick={onClick} className="card mb-3" style={{
+          width: "100%", padding: 16, textAlign: "left", cursor: "pointer",
+          border: `1px solid var(--line)`,
+          background: "var(--bg-card)",
+        }}>
+          <div className="flex items-start gap-3 mb-3">
+            <div style={{
+              width: 48, height: 48, borderRadius: 14,
+              background: `${project.color}15`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 24, flexShrink: 0,
+            }}>
+              {project.emoji}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="font-semibold text-base" style={{ color: "var(--ink)" }}>{project.name}</div>
+              {project.description && (
+                <div className="text-xs mt-0.5" style={{ color: "var(--ink-faint)", lineHeight: 1.4 }}>
+                  {project.description}
+                </div>
+              )}
+            </div>
+            <ChevronRight size={18} style={{ color: "var(--ink-faint)", flexShrink: 0, marginTop: 4 }} />
+          </div>
+
+          {stats && (
+            <>
+              <div style={{ height: 6, background: "var(--line)", borderRadius: 999, overflow: "hidden", marginBottom: 8 }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: project.color, borderRadius: 999, transition: "width 0.4s ease" }} />
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="mono text-xs" style={{ color: project.color, fontWeight: 600 }}>
+                  {stats.done} / {totalItems} · {pct}%
+                </span>
+                {stats.lastLog && (
+                  <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                    最近 {relativeDate(stats.lastLog.created_at)}
+                  </span>
+                )}
+              </div>
+            </>
+          )}
+        </button>
+      );
+    }
+
+    function ArchivedProjectCard({ project, onClick, onUnarchive }) {
+      return (
+        <div className="card mb-2" style={{
+          padding: 14,
+          opacity: 0.85,
+        }}>
+          <div className="flex items-start gap-3">
+            <div style={{
+              width: 36, height: 36, borderRadius: 10,
+              background: "var(--bg)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 18, flexShrink: 0,
+            }}>
+              {project.emoji}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="font-semibold text-sm" style={{ color: "var(--ink)" }}>{project.name}</span>
+                <Trophy size={13} style={{ color: "#d97706" }} />
+              </div>
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                {project.archived_at ? `${formatDateDisplay(project.archived_at.slice(0,10))} 完成` : "已归档"}
+              </div>
+              {project.summary && (
+                <div className="text-xs mt-1.5 px-2 py-1 rounded" style={{
+                  background: "var(--bg)", color: "var(--ink-soft)",
+                  lineHeight: 1.5, whiteSpace: "pre-wrap",
+                }}>
+                  {project.summary}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-2">
+            <button onClick={onClick} className="btn-ghost" style={{ flex: 1, fontSize: 12, padding: "6px 12px" }}>
+              查看
+            </button>
+            <button onClick={onUnarchive} className="btn-ghost" style={{ fontSize: 12, padding: "6px 12px" }}>
+              恢复
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ================================================================
+    // Project Page — 项目详情页（含四个 tab）
+    // ================================================================
+    function ProjectPage({ project, onBack, onArchive, showToast }) {
+      const [logs, setLogs] = useState([]);
+      const [notes, setNotes] = useState([]);
+      const [moduleMeta, setModuleMeta] = useState([]); // [{module_id, subtitle}]
+      const [loadingData, setLoadingData] = useState(true);
+      const [tab, setTab] = useState("plan");
+      const [checkInItem, setCheckInItem] = useState(null);
+      const [addNoteFor, setAddNoteFor] = useState(null);
+      const [editingNote, setEditingNote] = useState(null);
+      const [editingModuleId, setEditingModuleId] = useState(null);
+      const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+      const [expandedModules, setExpandedModules] = useState({ m1: true });
+
+      const planModules = PROJECT_PLANS[project.id] || [];
+
+      useEffect(() => {
+        Promise.all([loadLogs(project.id), loadNotes(project.id), loadModuleMeta(project.id)])
+          .then(([l, n, m]) => { setLogs(l); setNotes(n); setModuleMeta(m); })
+          .catch(e => { console.error(e); showToast("加载数据失败"); })
+          .finally(() => setLoadingData(false));
+      }, [project.id]);
+
+      const subtitleMap = useMemo(() => {
+        const map = {};
+        moduleMeta.forEach(m => { map[m.module_id] = m.subtitle; });
+        return map;
+      }, [moduleMeta]);
+
+      const doneItemIds = useMemo(() => new Set(logs.map(l => l.item_id)), [logs]);
+      const todayDoneIds = useMemo(() => {
+        const t = todayStr();
+        return new Set(logs.filter(l => l.date === t).map(l => l.item_id));
+      }, [logs]);
+
+      // 距离上次学习多少天（今天打过卡 = 0，昨天打过 = 1，没记录 = null）
+      const daysSinceLastLog = useMemo(() => {
+        if (!logs.length) return null;
+        const dates = [...new Set(logs.map(l => l.date))].sort().reverse();
+        const lastDate = new Date(dates[0] + 'T00:00:00');
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const diffMs = today - lastDate;
+        return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+      }, [logs]);
+
+      const totalItems = planModules.reduce((s, m) => s + m.items.length, 0);
+      const doneCount = planModules.reduce((s, m) => s + m.items.filter(i => doneItemIds.has(i.id)).length, 0);
+      const allDone = totalItems > 0 && doneCount === totalItems;
+
+      const planNotes = useMemo(() => notes.filter(n => n.type === 'note'), [notes]);
+      const extraNotes = useMemo(() => notes.filter(n => n.type === 'extra'), [notes]);
+      const unresolvedCount = planNotes.filter(n => !n.resolved).length;
+
+      // ── handlers ──
+      const handleCheckIn = async (item, { date, note }) => {
+        if (logs.some(l => l.item_id === item.id && l.date === date)) {
+          showToast("今天已打卡过这一条");
+          setCheckInItem(null);
+          return;
+        }
+        const newLog = {
+          id: genId(), project_id: project.id,
+          item_id: item.id, date, note: note || "",
+          created_at: new Date().toISOString(),
+        };
+        setLogs(prev => [newLog, ...prev]);
+        setCheckInItem(null);
+        try { await insertLog(newLog); showToast("打卡成功 ✓"); }
+        catch(e) { setLogs(prev => prev.filter(l => l.id !== newLog.id)); showToast("保存失败"); }
+      };
+
+      const handleUncheck = async (itemId) => {
+        const log = logs.find(l => l.item_id === itemId);
+        if (!log) return;
+        if (!confirm("撤销这条打卡记录？")) return;
+        setLogs(prev => prev.filter(l => l.id !== log.id));
+        try { await deleteLog(log.id); showToast("已撤销"); }
+        catch(e) { setLogs(prev => [log, ...prev]); showToast("撤销失败"); }
+      };
+
+      const handleAddNote = async ({ type, itemId, content, date }) => {
+        // 如果是额外学习且指定了日期，构造一个对应日期的 created_at
+        let createdAt = new Date().toISOString();
+        if (type === 'extra' && date) {
+          // 用户选的日期 + 当前时间，避免日期为今天的话本地化错乱
+          const now = new Date();
+          createdAt = new Date(`${date}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`).toISOString();
+        }
+        const newNote = {
+          id: genId(), project_id: project.id,
+          item_id: itemId || null, type, content,
+          resolution: '', resolved: false,
+          created_at: createdAt,
+          resolved_at: null,
+        };
+        setNotes(prev => [newNote, ...prev]);
+        setAddNoteFor(null);
+        try { await insertNote(newNote); showToast(type === 'extra' ? "已记录 ✓" : "难点已记录"); }
+        catch(e) { setNotes(prev => prev.filter(n => n.id !== newNote.id)); showToast("保存失败"); }
+      };
+
+      const handleResolveNote = async (id) => {
+        const old = notes.find(n => n.id === id);
+        if (!old) return;
+        const updated = { ...old, resolved: !old.resolved, resolved_at: !old.resolved ? new Date().toISOString() : null };
+        setNotes(prev => prev.map(n => n.id === id ? updated : n));
+        try { await updateNote(id, { resolved: updated.resolved, resolved_at: updated.resolved_at }); showToast(updated.resolved ? "已解决 ✓" : "已重新打开"); }
+        catch(e) { setNotes(prev => prev.map(n => n.id === id ? old : n)); showToast("更新失败"); }
+      };
+
+      const handleUpdateNote = async (id, patch) => {
+        const old = notes.find(n => n.id === id);
+        if (!old) return;
+        const updated = { ...old, ...patch };
+        setNotes(prev => prev.map(n => n.id === id ? updated : n));
+        setEditingNote(null);
+        try { await updateNote(id, patch); showToast("已更新"); }
+        catch(e) { setNotes(prev => prev.map(n => n.id === id ? old : n)); showToast("更新失败"); }
+      };
+
+      const handleDeleteNote = async (id) => {
+        if (!confirm("删除这条记录？")) return;
+        const old = notes.find(n => n.id === id);
+        setNotes(prev => prev.filter(n => n.id !== id));
+        try { await deleteNote(id); showToast("已删除"); }
+        catch(e) { setNotes(prev => [old, ...prev]); showToast("删除失败"); }
+      };
+
+      const handleDeleteLog = async (id) => {
+        if (!confirm("删除这条打卡记录？")) return;
+        const old = logs.find(l => l.id === id);
+        setLogs(prev => prev.filter(l => l.id !== id));
+        try { await deleteLog(id); showToast("已删除"); }
+        catch(e) { setLogs(prev => [old, ...prev]); showToast("删除失败"); }
+      };
+
+      const handleSaveSubtitle = async (moduleId, subtitle) => {
+        const trimmed = subtitle.trim();
+        // 本地更新
+        const old = [...moduleMeta];
+        const existing = moduleMeta.find(m => m.module_id === moduleId);
+        if (existing) {
+          setModuleMeta(prev => prev.map(m => m.module_id === moduleId ? { ...m, subtitle: trimmed } : m));
+        } else {
+          setModuleMeta(prev => [...prev, { project_id: project.id, module_id: moduleId, subtitle: trimmed }]);
+        }
+        setEditingModuleId(null);
+        try {
+          await upsertModuleMeta({ project_id: project.id, module_id: moduleId, subtitle: trimmed });
+          showToast("已保存");
+        } catch(e) { setModuleMeta(old); showToast("保存失败"); }
+      };
+
+      const toggleModule = (id) => setExpandedModules(p => ({ ...p, [id]: !p[id] }));
+
+      if (loadingData) return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="text-sm" style={{ color: "var(--ink-faint)" }}>加载中...</div>
+        </div>
+      );
+
+      return (
+        <div className="animate-in">
+          <ProjectHeader
+            project={project}
+            onBack={onBack}
+            daysSinceLastLog={daysSinceLastLog}
+            doneCount={doneCount}
+            totalItems={totalItems}
+            unresolvedCount={unresolvedCount}
+            allDone={allDone}
+            isArchived={project.archived}
+            onArchiveClick={() => setArchiveModalOpen(true)}
+          />
+
+          {tab === "plan" && (
+            <PlanView
+              modules={planModules}
+              subtitleMap={subtitleMap}
+              doneItemIds={doneItemIds}
+              todayDoneIds={todayDoneIds}
+              notes={planNotes}
+              expandedModules={expandedModules}
+              onToggleModule={toggleModule}
+              onCheckIn={(item) => !project.archived && setCheckInItem(item)}
+              onUncheck={(id) => !project.archived && handleUncheck(id)}
+              onAddNote={(item) => !project.archived && setAddNoteFor({ type: 'note', item })}
+              onEditSubtitle={(moduleId) => !project.archived && setEditingModuleId(moduleId)}
+              isArchived={project.archived}
+            />
+          )}
+          {tab === "notes" && (
+            <NotesView
+              notes={planNotes}
+              modules={planModules}
+              onResolve={handleResolveNote}
+              onEdit={setEditingNote}
+              onDelete={handleDeleteNote}
+              isArchived={project.archived}
+            />
+          )}
+          {tab === "extra" && (
+            <ExtraView
+              notes={extraNotes}
+              onAdd={() => !project.archived && setAddNoteFor({ type: 'extra' })}
+              onEdit={setEditingNote}
+              onDelete={handleDeleteNote}
+              isArchived={project.archived}
+            />
+          )}
+          {tab === "history" && (
+            <HistoryView logs={logs} modules={planModules} onDelete={handleDeleteLog} />
+          )}
+
+          <BottomNav tab={tab} setTab={setTab} unresolvedCount={unresolvedCount} />
+
+          {checkInItem && <CheckInModal item={checkInItem} onConfirm={(d) => handleCheckIn(checkInItem, d)} onCancel={() => setCheckInItem(null)} />}
+          {addNoteFor && <AddNoteModal target={addNoteFor} onConfirm={handleAddNote} onCancel={() => setAddNoteFor(null)} />}
+          {editingNote && <EditNoteModal note={editingNote} modules={planModules} onSave={(p) => handleUpdateNote(editingNote.id, p)} onCancel={() => setEditingNote(null)} />}
+          {editingModuleId && (
+            <EditSubtitleModal
+              module={planModules.find(m => m.id === editingModuleId)}
+              currentSubtitle={subtitleMap[editingModuleId] !== undefined ? subtitleMap[editingModuleId] : (planModules.find(m => m.id === editingModuleId)?.defaultSubtitle || "")}
+              onSave={(s) => handleSaveSubtitle(editingModuleId, s)}
+              onCancel={() => setEditingModuleId(null)}
+            />
+          )}
+          {archiveModalOpen && (
+            <ArchiveModal
+              project={project}
+              doneCount={doneCount}
+              totalItems={totalItems}
+              onConfirm={(summary) => { onArchive(project.id, summary); setArchiveModalOpen(false); }}
+              onCancel={() => setArchiveModalOpen(false)}
+            />
+          )}
+        </div>
+      );
+    }
+
+    function ProjectHeader({ project, onBack, daysSinceLastLog, doneCount, totalItems, unresolvedCount, allDone, isArchived, onArchiveClick }) {
+      const pct = totalItems ? Math.round(doneCount / totalItems * 100) : 0;
+
+      // 计算"多久没学习了"的显示信息
+      let lastLogInfo;
+      if (daysSinceLastLog === null) {
+        lastLogInfo = { label: "还没开始", value: "—", color: "var(--ink-faint)", urgent: false };
+      } else if (daysSinceLastLog === 0) {
+        lastLogInfo = { label: "今天已学习", value: "✓", color: "#16a34a", urgent: false };
+      } else if (daysSinceLastLog === 1) {
+        lastLogInfo = { label: "上次学习", value: "昨天", color: "#d97706", urgent: false };
+      } else {
+        lastLogInfo = {
+          label: "已停滞",
+          value: daysSinceLastLog,
+          unit: "天",
+          color: daysSinceLastLog >= 7 ? "#dc2626" : "#d97706",
+          urgent: daysSinceLastLog >= 3,
+        };
+      }
+
+      return (
+        <header className="px-5 pt-6 pb-4">
+          <div className="flex items-center justify-between mb-4">
+            <button onClick={onBack} style={{
+              background: "var(--bg-card)", border: "1px solid var(--line)",
+              borderRadius: 999, padding: "6px 12px 6px 8px",
+              display: "flex", alignItems: "center", gap: 4,
+              cursor: "pointer", color: "var(--ink-soft)",
+              fontFamily: "var(--font-body)", fontSize: 13,
+            }}>
+              <ChevronLeft size={16} /> 计划列表
+            </button>
+            {isArchived && (
+              <span style={{
+                fontSize: 11, fontWeight: 600,
+                padding: "4px 10px", borderRadius: 999,
+                color: "#d97706", background: "#fef3c7",
+              }}>
+                已归档（只读）
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-baseline justify-between mb-4">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="mono text-xs uppercase tracking-widest" style={{ color: "var(--ink-faint)" }}>
+                {project.emoji} project
+              </div>
+              <h1 className="display text-3xl font-bold mt-1" style={{ wordBreak: "break-word" }}>{project.name}</h1>
+            </div>
+            <div className="text-right" style={{ flexShrink: 0, marginLeft: 12 }}>
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{lastLogInfo.label}</div>
+              <div className="display text-2xl font-semibold" style={{ color: lastLogInfo.color }}>
+                {lastLogInfo.value}
+                {lastLogInfo.unit && <span style={{ fontSize: 14, marginLeft: 2 }}>{lastLogInfo.unit}</span>}
+              </div>
+            </div>
+          </div>
+
+          <div className="card p-4">
+            <div className="flex justify-between items-baseline mb-2">
+              <span className="text-sm font-medium">进度</span>
+              <span className="mono text-sm font-bold" style={{ color: project.color }}>{doneCount} / {totalItems}</span>
+            </div>
+            <div style={{ height: 8, background: "var(--line)", borderRadius: 999, overflow: "hidden" }}>
+              <div style={{ height: "100%", width: `${pct}%`, background: project.color, borderRadius: 999, transition: "width 0.4s ease" }} />
+            </div>
+            <div className="flex justify-between items-center mt-2">
+              <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{pct}%</span>
+              {unresolvedCount > 0 && (
+                <span className="mono text-xs" style={{ color: "#dc2626", fontWeight: 600 }}>
+                  ⚠ {unresolvedCount} 个难点待解决
+                </span>
+              )}
+            </div>
+
+            {lastLogInfo.urgent && !isArchived && (
+              <div className="mt-3 p-2 rounded-lg text-xs" style={{
+                background: daysSinceLastLog >= 7 ? "#fee2e2" : "#fef3c7",
+                color: daysSinceLastLog >= 7 ? "#b91c1c" : "#92400e",
+                lineHeight: 1.5,
+              }}>
+                {daysSinceLastLog >= 7
+                  ? `⚠️ 已经 ${daysSinceLastLog} 天没学习了，再不开始就要忘光了！`
+                  : `已经 ${daysSinceLastLog} 天没学习了，今天打个卡吧 💪`}
+              </div>
+            )}
+
+            {allDone && !isArchived && (
+              <button onClick={onArchiveClick} style={{
+                width: "100%", marginTop: 12, padding: "10px 16px",
+                background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
+                color: "white", border: "none", borderRadius: 12,
+                fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "var(--font-body)",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              }}>
+                <Trophy size={16} /> 全部完成，归档这个计划
+              </button>
+            )}
+          </div>
+        </header>
+      );
+    }
+
+    // ── Plan View ──
+    function PlanView({ modules, subtitleMap, doneItemIds, todayDoneIds, notes, expandedModules, onToggleModule, onCheckIn, onUncheck, onAddNote, onEditSubtitle, isArchived }) {
+      const noteCounts = useMemo(() => {
+        const map = {};
+        notes.forEach(n => {
+          if (!n.item_id) return;
+          if (!map[n.item_id]) map[n.item_id] = { total: 0, unresolved: 0 };
+          map[n.item_id].total++;
+          if (!n.resolved) map[n.item_id].unresolved++;
+        });
+        return map;
+      }, [notes]);
+
+      return (
+        <div className="px-5 animate-in">
+          {modules.map(module => (
+            <ModuleCard
+              key={module.id}
+              module={module}
+              subtitle={subtitleMap[module.id] !== undefined ? subtitleMap[module.id] : module.defaultSubtitle}
+              hasCustomSubtitle={subtitleMap[module.id] !== undefined && subtitleMap[module.id] !== module.defaultSubtitle}
+              doneItemIds={doneItemIds}
+              todayDoneIds={todayDoneIds}
+              noteCounts={noteCounts}
+              expanded={expandedModules[module.id]}
+              onToggle={() => onToggleModule(module.id)}
+              onCheckIn={onCheckIn}
+              onUncheck={onUncheck}
+              onAddNote={onAddNote}
+              onEditSubtitle={() => onEditSubtitle(module.id)}
+              isArchived={isArchived}
+            />
+          ))}
+        </div>
+      );
+    }
+
+    function ModuleCard({ module, subtitle, hasCustomSubtitle, doneItemIds, todayDoneIds, noteCounts, expanded, onToggle, onCheckIn, onUncheck, onAddNote, onEditSubtitle, isArchived }) {
+      const doneInModule = module.items.filter(i => doneItemIds.has(i.id)).length;
+      const total = module.items.length;
+      const allDone = doneInModule === total;
+      const pct = total ? Math.round(doneInModule / total * 100) : 0;
+
+      return (
+        <div className="card mb-4 overflow-hidden">
+          <div style={{ display: "flex" }}>
+            <button onClick={onToggle} style={{
+              flex: 1, background: "none", border: "none", cursor: "pointer", textAlign: "left",
+              padding: "16px 16px 16px 16px",
+            }}>
+              <div className="flex items-center gap-3">
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: module.colorSoft,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 20, flexShrink: 0,
+                }}>
+                  {allDone ? "✅" : module.emoji}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="font-semibold text-sm" style={{ color: "var(--ink)" }}>{module.title}</div>
+                  <div
+                    onClick={(e) => { if (!isArchived) { e.stopPropagation(); onEditSubtitle(); } }}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, marginTop: 2,
+                      padding: "2px 8px", borderRadius: 999,
+                      background: hasCustomSubtitle ? `${module.color}15` : "var(--bg)",
+                      border: `1px dashed ${hasCustomSubtitle ? module.color : "var(--line)"}`,
+                      cursor: isArchived ? "default" : "pointer",
+                      fontFamily: "var(--font-mono)", fontSize: 11,
+                      color: hasCustomSubtitle ? module.color : "var(--ink-faint)",
+                      fontWeight: hasCustomSubtitle ? 600 : 400,
+                    }}
+                  >
+                    {subtitle || "点击设置时间"}
+                    {!isArchived && <Pencil size={10} />}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="mono text-xs font-bold" style={{ color: module.color }}>{doneInModule}/{total}</span>
+                  <ChevronDown size={16} style={{
+                    color: "var(--ink-faint)",
+                    transform: expanded ? "rotate(180deg)" : "rotate(0deg)",
+                    transition: "transform 0.3s ease",
+                  }} />
+                </div>
+              </div>
+              <div style={{ height: 3, background: "var(--line)", borderRadius: 999, marginTop: 10, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${pct}%`, background: module.color, borderRadius: 999, transition: "width 0.3s ease" }} />
+              </div>
+            </button>
+          </div>
+
+          <div
+            style={{
+              maxHeight: expanded ? "5000px" : "0px",
+              opacity: expanded ? 1 : 0,
+              overflow: "hidden",
+              transition: expanded
+                ? "max-height 0.4s ease-in-out, opacity 0.25s ease-in 0.05s"
+                : "max-height 0.3s ease-in-out, opacity 0.15s ease-out",
+            }}
+          >
+            <div style={{ borderTop: "1px solid var(--line)" }}>
+              {module.items.map((item, idx) => (
+                <StudyItem
+                  key={item.id}
+                  item={item}
+                  moduleColor={module.color}
+                  isDone={doneItemIds.has(item.id)}
+                  isTodayDone={todayDoneIds.has(item.id)}
+                  noteCount={noteCounts[item.id]}
+                  isLast={idx === module.items.length - 1}
+                  onCheckIn={() => onCheckIn(item)}
+                  onUncheck={() => onUncheck(item.id)}
+                  onAddNote={() => onAddNote(item)}
+                  isArchived={isArchived}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function StudyItem({ item, moduleColor, isDone, isTodayDone, noteCount, isLast, onCheckIn, onUncheck, onAddNote, isArchived }) {
+      const typeConf = TYPE_CONFIG[item.type] || TYPE_CONFIG.read;
+      return (
+        <div style={{
+          padding: "14px 16px",
+          borderBottom: isLast ? "none" : "1px solid var(--line)",
+          background: isDone ? "rgba(0,0,0,0.015)" : "transparent",
+          display: "flex", gap: 12, alignItems: "flex-start",
+        }}>
+          <button
+            onClick={isDone ? onUncheck : onCheckIn}
+            disabled={isArchived}
+            style={{
+              flexShrink: 0, width: 28, height: 28, borderRadius: "50%",
+              border: isDone ? "none" : `2px solid ${moduleColor}`,
+              background: isDone ? moduleColor : "transparent",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: isArchived ? "default" : "pointer", marginTop: 2,
+              transition: "all 0.15s ease",
+              opacity: isArchived ? 0.7 : 1,
+            }}
+          >
+            {isDone && <Check size={14} style={{ color: "white" }} />}
+          </button>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="flex items-start gap-1.5 flex-wrap">
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
+                color: typeConf.color, background: typeConf.bg, flexShrink: 0,
+              }}>
+                {typeConf.label}
+              </span>
+              {isTodayDone && (
+                <span style={{
+                  fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
+                  color: "#276749", background: "#e6f4ec", flexShrink: 0,
+                }}>
+                  今日已打卡 ✓
+                </span>
+              )}
+              {noteCount && noteCount.unresolved > 0 && (
+                <span style={{
+                  fontSize: 11, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
+                  color: "#b91c1c", background: "#fee2e2", flexShrink: 0,
+                }}>
+                  💡 {noteCount.unresolved} 待解决
+                </span>
+              )}
+            </div>
+            <div className="text-sm font-medium mt-1" style={{
+              color: isDone ? "var(--ink-soft)" : "var(--ink)",
+              textDecoration: isDone ? "line-through" : "none",
+              lineHeight: 1.4,
+            }}>
+              {item.title}
+            </div>
+            <div className="text-xs mt-1" style={{ color: "var(--ink-faint)", lineHeight: 1.5 }}>
+              {item.desc}
+            </div>
+            <div className="flex items-center gap-3 mt-2">
+              {item.url && (
+                <a href={item.url} target="_blank" rel="noreferrer"
+                  className="mono text-xs"
+                  style={{ color: "var(--accent)", textDecoration: "none" }}
+                >
+                  打开链接 →
+                </a>
+              )}
+              {!isArchived && (
+                <button onClick={onAddNote} className="mono text-xs" style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "#b91c1c", padding: 0,
+                  display: "flex", alignItems: "center", gap: 3,
+                }}>
+                  <Plus size={12} /> 加难点
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Modals ──
+    function ModalShell({ children, onClose }) {
+      return (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          zIndex: 50,
+        }} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+          <div className="animate-up card" style={{
+            width: "100%", maxWidth: 480,
+            borderBottomLeftRadius: 0, borderBottomRightRadius: 0,
+            borderTopLeftRadius: 24, borderTopRightRadius: 24,
+            padding: "24px 20px 36px",
+            maxHeight: "90vh", overflowY: "auto",
+          }}>
+            <div style={{ width: 36, height: 4, background: "var(--line)", borderRadius: 999, margin: "0 auto 20px" }} />
+            {children}
+          </div>
+        </div>
+      );
+    }
+    function CloseBtn({ onClick }) {
+      return (
+        <button onClick={onClick} style={{
+          background: "var(--bg)", border: "1px solid var(--line)",
+          borderRadius: "50%", width: 32, height: 32,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          cursor: "pointer", color: "var(--ink-soft)", flexShrink: 0,
+        }}>
+          <X size={16} />
+        </button>
+      );
+    }
+
+    function CheckInModal({ item, onConfirm, onCancel }) {
+      const [date, setDate] = useState(todayStr());
+      const [note, setNote] = useState("");
+      const typeConf = TYPE_CONFIG[item.type] || TYPE_CONFIG.read;
+
+      return (
+        <ModalShell onClose={onCancel}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                color: typeConf.color, background: typeConf.bg, display: "inline-block", marginBottom: 6,
+              }}>{typeConf.label} · 打卡</div>
+              <div className="font-semibold text-base" style={{ color: "var(--ink)", lineHeight: 1.4, maxWidth: 260 }}>{item.title}</div>
+            </div>
+            <CloseBtn onClick={onCancel} />
+          </div>
+          <div className="mb-4">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>日期</label>
+            <input className="input mono" type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div className="mb-5">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>备注（可选）</label>
+            <input className="input" type="text" placeholder="今天学到了什么..." value={note} onChange={e => setNote(e.target.value)} maxLength={200} />
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>取消</button>
+            <button className="btn-primary" onClick={() => onConfirm({ date, note })} style={{ flex: 2 }}>
+              <Check size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} /> 打卡
+            </button>
+          </div>
+        </ModalShell>
+      );
+    }
+
+    function AddNoteModal({ target, onConfirm, onCancel }) {
+      const [content, setContent] = useState("");
+      const [date, setDate] = useState(todayStr());
+      const isExtra = target.type === 'extra';
+      const submit = () => {
+        const trimmed = content.trim();
+        if (!trimmed) return;
+        onConfirm({
+          type: target.type,
+          itemId: target.item ? target.item.id : null,
+          content: trimmed,
+          date: isExtra ? date : null, // 仅额外学习需要日期
+        });
+      };
+      return (
+        <ModalShell onClose={onCancel}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                color: isExtra ? "#1e40af" : "#b91c1c",
+                background: isExtra ? "#dbeafe" : "#fee2e2",
+                display: "inline-block", marginBottom: 6,
+              }}>{isExtra ? "✨ 额外学习" : "💡 添加难点"}</div>
+              <div className="font-semibold text-base" style={{ color: "var(--ink)", lineHeight: 1.4, maxWidth: 260 }}>
+                {isExtra ? "记录一段额外学到的东西" : target.item.title}
+              </div>
+            </div>
+            <CloseBtn onClick={onCancel} />
+          </div>
+          {isExtra && (
+            <div className="mb-4">
+              <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>日期</label>
+              <input className="input mono" type="date" value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+          )}
+          <div className="mb-5">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>
+              {isExtra ? "学习内容" : "难点描述"}
+            </label>
+            <textarea className="input" rows={4}
+              style={{ resize: "vertical", minHeight: 80, paddingTop: 8 }}
+              placeholder={isExtra ? "例如：读了一篇关于FlashAttention的博客..." : "例如：DPO的KL约束怎么推导的，没看明白"}
+              value={content} onChange={e => setContent(e.target.value)} maxLength={500} autoFocus
+            />
+            <div className="mono text-xs mt-1" style={{ color: "var(--ink-faint)", textAlign: "right" }}>{content.length} / 500</div>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>取消</button>
+            <button className="btn-primary" onClick={submit} disabled={!content.trim()} style={{ flex: 2, opacity: content.trim() ? 1 : 0.5 }}>
+              <Check size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} /> 保存
+            </button>
+          </div>
+        </ModalShell>
+      );
+    }
+
+    function EditNoteModal({ note, modules, onSave, onCancel }) {
+      const [content, setContent] = useState(note.content);
+      const [resolution, setResolution] = useState(note.resolution || "");
+      const isExtra = note.type === 'extra';
+      const item = useMemo(() => {
+        if (!note.item_id) return null;
+        for (const m of modules) {
+          const f = m.items.find(i => i.id === note.item_id);
+          if (f) return { ...f, moduleTitle: m.title };
+        }
+        return null;
+      }, [note, modules]);
+
+      return (
+        <ModalShell onClose={onCancel}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                color: isExtra ? "#1e40af" : "#b91c1c",
+                background: isExtra ? "#dbeafe" : "#fee2e2",
+                display: "inline-block", marginBottom: 6,
+              }}>{isExtra ? "✨ 额外学习" : "💡 难点"}</div>
+              {item && <div className="text-xs" style={{ color: "var(--ink-faint)", marginBottom: 4 }}>归属：{item.title}</div>}
+            </div>
+            <CloseBtn onClick={onCancel} />
+          </div>
+          <div className="mb-4">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>
+              {isExtra ? "学习内容" : "难点描述"}
+            </label>
+            <textarea className="input" rows={3}
+              style={{ resize: "vertical", minHeight: 70, paddingTop: 8 }}
+              value={content} onChange={e => setContent(e.target.value)} maxLength={500}
+            />
+          </div>
+          {!isExtra && (
+            <div className="mb-5">
+              <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>解决方案 / 补充资料（可选）</label>
+              <textarea className="input" rows={3}
+                style={{ resize: "vertical", minHeight: 70, paddingTop: 8 }}
+                placeholder="例如：看了XX博客第3节搞懂了..."
+                value={resolution} onChange={e => setResolution(e.target.value)} maxLength={500}
+              />
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>取消</button>
+            <button className="btn-primary" onClick={() => onSave({ content: content.trim(), resolution: resolution.trim() })} style={{ flex: 2 }}>
+              <Check size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} /> 保存修改
+            </button>
+          </div>
+        </ModalShell>
+      );
+    }
+
+    function EditSubtitleModal({ module, currentSubtitle, onSave, onCancel }) {
+      const [val, setVal] = useState(currentSubtitle);
+      return (
+        <ModalShell onClose={onCancel}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div style={{
+                fontSize: 11, fontWeight: 600, padding: "2px 8px", borderRadius: 999,
+                color: "#1e40af", background: "#dbeafe",
+                display: "inline-block", marginBottom: 6,
+              }}>编辑时间段</div>
+              <div className="font-semibold text-base" style={{ color: "var(--ink)" }}>{module.emoji} {module.title}</div>
+            </div>
+            <CloseBtn onClick={onCancel} />
+          </div>
+          <div className="mb-5">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>时间段</label>
+            <input
+              className="input" type="text" autoFocus maxLength={50}
+              placeholder="例如：5月初~5月底 / 约2周 / 进行中..."
+              value={val} onChange={e => setVal(e.target.value)}
+            />
+            <div className="text-xs mt-2" style={{ color: "var(--ink-faint)", lineHeight: 1.5 }}>
+              留空则使用默认值「{module.defaultSubtitle}」
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>取消</button>
+            <button className="btn-primary" onClick={() => onSave(val)} style={{ flex: 2 }}>
+              <Check size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} /> 保存
+            </button>
+          </div>
+        </ModalShell>
+      );
+    }
+
+    function ArchiveModal({ project, doneCount, totalItems, onConfirm, onCancel }) {
+      const [summary, setSummary] = useState("");
+      return (
+        <ModalShell onClose={onCancel}>
+          <div className="flex justify-between items-start mb-4">
+            <div>
+              <div style={{ fontSize: 36, marginBottom: 4 }}>🎉</div>
+              <div className="display text-xl font-bold mb-1">完成 {project.name}！</div>
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>
+                {doneCount} / {totalItems} 个任务全部完成
+              </div>
+            </div>
+            <CloseBtn onClick={onCancel} />
+          </div>
+          <div className="mb-5">
+            <label className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: "var(--ink-faint)" }}>总结一下这次学习的收获（可选）</label>
+            <textarea className="input" rows={4}
+              style={{ resize: "vertical", minHeight: 80, paddingTop: 8 }}
+              placeholder="比如：最大的收获是...、还需要继续学的是..."
+              value={summary} onChange={e => setSummary(e.target.value)} maxLength={500}
+            />
+            <div className="mono text-xs mt-1" style={{ color: "var(--ink-faint)", textAlign: "right" }}>{summary.length} / 500</div>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>取消</button>
+            <button onClick={() => onConfirm(summary.trim())} style={{
+              flex: 2, padding: "14px 20px", borderRadius: 14,
+              background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
+              color: "white", border: "none", fontWeight: 600, fontSize: 15,
+              cursor: "pointer", fontFamily: "var(--font-body)",
+            }}>
+              <Trophy size={15} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} /> 归档计划
+            </button>
+          </div>
+        </ModalShell>
+      );
+    }
+
+    // ── Notes View ──
+    function NotesView({ notes, modules, onResolve, onEdit, onDelete, isArchived }) {
+      const itemMap = useMemo(() => {
+        const map = {};
+        modules.forEach(m => m.items.forEach(i => { map[i.id] = { ...i, moduleTitle: m.title, moduleEmoji: m.emoji, moduleColor: m.color }; }));
+        return map;
+      }, [modules]);
+
+      const unresolved = notes.filter(n => !n.resolved);
+      const resolved = notes.filter(n => n.resolved);
+
+      return (
+        <div className="px-5 animate-in">
+          {notes.length === 0 ? (
+            <div className="card p-8" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>💡</div>
+              <div className="display text-lg font-semibold mb-2">还没有记录难点</div>
+              <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+                学习中遇到不懂的知识点？<br/>
+                去「计划」页点任务下方的「+ 加难点」记录下来。<br/>
+                后续搞懂了再回来标记为已解决。
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className="card p-3" style={{ textAlign: "center" }}>
+                  <div className="display text-2xl font-bold" style={{ color: "#dc2626" }}>{unresolved.length}</div>
+                  <div className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>待解决</div>
+                </div>
+                <div className="card p-3" style={{ textAlign: "center" }}>
+                  <div className="display text-2xl font-bold" style={{ color: "#16a34a" }}>{resolved.length}</div>
+                  <div className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>已解决</div>
+                </div>
+              </div>
+
+              {unresolved.length > 0 && (
+                <div className="mb-5">
+                  <SectionHeader icon="alert-circle" color="#dc2626" title="待解决" count={unresolved.length} />
+                  {unresolved.map(n => (
+                    <NoteCard key={n.id} note={n} item={itemMap[n.item_id]} onResolve={() => onResolve(n.id)} onEdit={() => onEdit(n)} onDelete={() => onDelete(n.id)} disabled={isArchived} />
+                  ))}
+                </div>
+              )}
+
+              {resolved.length > 0 && (
+                <div className="mb-5">
+                  <SectionHeader icon="check-circle-2" color="#16a34a" title="已解决" count={resolved.length} />
+                  {resolved.map(n => (
+                    <NoteCard key={n.id} note={n} item={itemMap[n.item_id]} onResolve={() => onResolve(n.id)} onEdit={() => onEdit(n)} onDelete={() => onDelete(n.id)} disabled={isArchived} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      );
+    }
+
+    function SectionHeader({ icon, color, title, count }) {
+      return (
+        <div className="flex items-center gap-2 mb-2 px-1">
+          <LucideIcon name={icon} size={16} style={{ color }} />
+          <span className="font-semibold text-sm" style={{ color: "var(--ink)" }}>{title}</span>
+          <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>· {count}</span>
+        </div>
+      );
+    }
+
+    function NoteCard({ note, item, onResolve, onEdit, onDelete, disabled }) {
+      return (
+        <div className="card p-4 mb-2" style={{ borderLeft: `3px solid ${note.resolved ? "#16a34a" : "#dc2626"}` }}>
+          <div className="flex justify-between items-start mb-2 gap-2">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {item ? (
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>
+                  {item.moduleEmoji} <span style={{ color: item.moduleColor, fontWeight: 600 }}>{item.moduleTitle}</span>
+                  <span style={{ margin: "0 4px" }}>·</span><span>{item.title}</span>
+                </div>
+              ) : note.item_id ? (
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>已删除的任务</div>
+              ) : (
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>独立难点</div>
+              )}
+            </div>
+            {!disabled && (
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={onEdit} title="编辑" style={{
+                  background: "var(--bg)", border: "1px solid var(--line)", cursor: "pointer",
+                  width: 28, height: 28, borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--ink-soft)",
+                }}><Pencil size={13} /></button>
+                <button onClick={onDelete} title="删除" style={{
+                  background: "#fee2e2", border: "1px solid #fecaca", cursor: "pointer",
+                  width: 28, height: 28, borderRadius: 8,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#b91c1c",
+                }}><LucideIcon name="trash-2" size={13} /></button>
+              </div>
+            )}
+          </div>
+          <div className="text-sm mt-1" style={{ color: "var(--ink)", lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{note.content}</div>
+          {note.resolution && (
+            <div className="mt-2 p-2 rounded-lg text-xs" style={{
+              background: "#f0fdf4", color: "#15803d",
+              borderLeft: "2px solid #16a34a", lineHeight: 1.5, whiteSpace: "pre-wrap",
+            }}>✅ {note.resolution}</div>
+          )}
+          <div className="flex justify-between items-center mt-3">
+            <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+              {note.resolved
+                ? `${relativeDate(note.created_at)} 记录 · ${relativeDate(note.resolved_at)} 解决`
+                : `${relativeDate(note.created_at)} 记录`}
+            </div>
+            {!disabled && (
+              <button onClick={onResolve} style={{
+                background: note.resolved ? "var(--bg)" : "#16a34a",
+                color: note.resolved ? "var(--ink-soft)" : "white",
+                border: note.resolved ? "1px solid var(--line)" : "none",
+                borderRadius: 999, padding: "4px 12px",
+                fontSize: 12, fontWeight: 600, cursor: "pointer",
+                fontFamily: "var(--font-body)",
+              }}>{note.resolved ? "重新打开" : "标记已解决"}</button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Extra View ──
+    function ExtraView({ notes, onAdd, onEdit, onDelete, isArchived }) {
+      const grouped = useMemo(() => {
+        const groups = {};
+        notes.forEach(n => {
+          const date = n.created_at.slice(0, 10);
+          if (!groups[date]) groups[date] = [];
+          groups[date].push(n);
+        });
+        return Object.entries(groups).sort(([a],[b]) => b.localeCompare(a));
+      }, [notes]);
+
+      return (
+        <div className="px-5 animate-in">
+          {!isArchived && (
+            <button onClick={onAdd} className="card mb-4" style={{
+              width: "100%", padding: "16px",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              background: "var(--accent)", color: "white", borderColor: "var(--accent)",
+              cursor: "pointer", fontFamily: "var(--font-body)",
+              fontSize: 15, fontWeight: 600,
+            }}>
+              <Plus size={18} /> 记录一段额外学习
+            </button>
+          )}
+
+          {notes.length === 0 ? (
+            <div className="card p-8" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>✨</div>
+              <div className="display text-lg font-semibold mb-2">额外学习</div>
+              <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+                这里记录主计划之外的学习内容。<br/>
+                临时读的论文、博客、看的视频等。<br/>
+                这些不算在主进度里，只是留个痕迹。
+              </div>
+            </div>
+          ) : (
+            grouped.map(([date, items]) => (
+              <div key={date} className="mb-5">
+                <div className="mono text-xs uppercase tracking-widest mb-2 px-1" style={{ color: "var(--ink-faint)" }}>
+                  {formatDateDisplay(date)} · {items.length} 条
+                </div>
+                {items.map(n => (
+                  <div key={n.id} className="card p-4 mb-2" style={{ borderLeft: "3px solid var(--accent)" }}>
+                    <div className="flex justify-between items-start gap-2">
+                      <div className="text-sm" style={{ color: "var(--ink)", lineHeight: 1.5, whiteSpace: "pre-wrap", flex: 1 }}>{n.content}</div>
+                      {!isArchived && (
+                        <div className="flex gap-1 flex-shrink-0">
+                          <button onClick={() => onEdit(n)} style={{
+                            background: "var(--bg)", border: "none", cursor: "pointer",
+                            width: 24, height: 24, borderRadius: 6,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: "var(--ink-faint)",
+                          }}><Pencil size={12} /></button>
+                          <button onClick={() => onDelete(n.id)} style={{
+                            background: "var(--bg)", border: "none", cursor: "pointer",
+                            width: 24, height: 24, borderRadius: 6,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            color: "var(--ink-faint)",
+                          }}><X size={12} /></button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      );
+    }
+
+    // ── History View ──
+    function HistoryView({ logs, modules, onDelete }) {
+      const itemMap = useMemo(() => {
+        const map = {};
+        modules.forEach(m => m.items.forEach(i => { map[i.id] = { ...i, moduleTitle: m.title, moduleEmoji: m.emoji }; }));
+        return map;
+      }, [modules]);
+
+      const grouped = useMemo(() => {
+        const groups = {};
+        logs.forEach(l => {
+          if (!groups[l.date]) groups[l.date] = [];
+          groups[l.date].push(l);
+        });
+        return Object.entries(groups).sort(([a],[b]) => b.localeCompare(a));
+      }, [logs]);
+
+      // 近 90 天的打卡数据，用于热力图
+      const heatmapData = useMemo(() => {
+        const days = [];
+        const counts = {};
+        logs.forEach(l => { counts[l.date] = (counts[l.date] || 0) + 1; });
+        for (let i = 89; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const str = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          days.push({
+            date: str,
+            count: counts[str] || 0,
+            day: d.getDate(),
+            month: d.getMonth()+1,
+            weekday: d.getDay(),
+          });
+        }
+        return days;
+      }, [logs]);
+
+      // 近 14 天的打卡趋势数据
+      const trendData = useMemo(() => {
+        const days = [];
+        const counts = {};
+        logs.forEach(l => { counts[l.date] = (counts[l.date] || 0) + 1; });
+        for (let i = 13; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          const str = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          days.push({ date: str, count: counts[str] || 0, label: `${d.getMonth()+1}/${d.getDate()}` });
+        }
+        return days;
+      }, [logs]);
+
+      const totalLogs = logs.length;
+      const activeDays = new Set(logs.map(l => l.date)).size;
+      const maxCount = Math.max(1, ...heatmapData.map(d => d.count));
+
+      return (
+        <div className="px-5 animate-in">
+          {/* 摘要数据 */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="card p-3" style={{ textAlign: "center" }}>
+              <div className="display text-2xl font-bold" style={{ color: totalLogs > 0 ? "var(--accent)" : "var(--ink-faint)" }}>{totalLogs}</div>
+              <div className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>打卡总次数</div>
+            </div>
+            <div className="card p-3" style={{ textAlign: "center" }}>
+              <div className="display text-2xl font-bold" style={{ color: activeDays > 0 ? "var(--accent)" : "var(--ink-faint)" }}>{activeDays}</div>
+              <div className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>活跃天数</div>
+            </div>
+          </div>
+
+          {/* 热力图 */}
+          <Heatmap days={heatmapData} maxCount={maxCount} />
+
+          {/* 折线图 */}
+          <TrendChart days={trendData} />
+
+          {/* 历史列表 */}
+          <div className="mono text-xs uppercase tracking-widest mb-2 mt-5 px-1" style={{ color: "var(--ink-faint)" }}>
+            完整打卡历史
+          </div>
+          {grouped.length === 0 ? (
+            <div className="card p-8" style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📭</div>
+              <div className="text-sm font-medium mb-1" style={{ color: "var(--ink-soft)" }}>还没有打卡记录</div>
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>去「计划」页打第一个卡吧</div>
+            </div>
+          ) : grouped.map(([date, dayLogs]) => (
+            <div key={date} className="mb-5">
+              <div className="mono text-xs uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>
+                {formatDateDisplay(date)} · {dayLogs.length} 条
+              </div>
+              <div className="card overflow-hidden">
+                {dayLogs.map((log, idx) => {
+                  const item = itemMap[log.item_id];
+                  const typeConf = item ? (TYPE_CONFIG[item.type] || TYPE_CONFIG.read) : TYPE_CONFIG.read;
+                  return (
+                    <div key={log.id} style={{
+                      padding: "14px 16px",
+                      borderBottom: idx < dayLogs.length - 1 ? "1px solid var(--line)" : "none",
+                      display: "flex", gap: 10, alignItems: "flex-start",
+                    }}>
+                      <div style={{
+                        width: 8, height: 8, borderRadius: "50%",
+                        background: item ? "var(--accent)" : "var(--ink-faint)",
+                        flexShrink: 0, marginTop: 6,
+                      }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        {item ? (
+                          <>
+                            <div style={{
+                              fontSize: 11, fontWeight: 600, padding: "1px 6px", borderRadius: 999,
+                              color: typeConf.color, background: typeConf.bg,
+                              display: "inline-block", marginBottom: 3,
+                            }}>{typeConf.label}</div>
+                            <div className="text-sm font-medium" style={{ color: "var(--ink)", lineHeight: 1.4 }}>{item.title}</div>
+                            <div className="text-xs" style={{ color: "var(--ink-faint)" }}>{item.moduleEmoji} {item.moduleTitle}</div>
+                          </>
+                        ) : (
+                          <div className="text-sm" style={{ color: "var(--ink-faint)" }}>已删除的条目</div>
+                        )}
+                        {log.note && (
+                          <div className="text-xs mt-1 px-2 py-1 rounded-lg" style={{
+                            background: "var(--bg)", color: "var(--ink-soft)", lineHeight: 1.5,
+                          }}>💬 {log.note}</div>
+                        )}
+                      </div>
+                      <button onClick={() => onDelete(log.id)} style={{
+                        background: "none", border: "none", cursor: "pointer",
+                        color: "var(--ink-faint)", padding: 4, flexShrink: 0,
+                      }}><X size={14} /></button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // 热力图组件
+    function Heatmap({ days, maxCount }) {
+      const todayStrVal = todayStr();
+      // 把 days 按周分组（每列7天，从周日到周六）
+      // 找到第一个周日
+      const firstDate = new Date(days[0].date + 'T00:00:00');
+      const firstWeekday = firstDate.getDay();
+      // 在前面补齐到周日
+      const padded = [];
+      for (let i = 0; i < firstWeekday; i++) padded.push(null);
+      padded.push(...days);
+      // 末尾补齐
+      while (padded.length % 7 !== 0) padded.push(null);
+
+      // 转成 7 行 × N 列（每列一周）
+      const cols = padded.length / 7;
+      const weeks = [];
+      for (let c = 0; c < cols; c++) {
+        const week = [];
+        for (let r = 0; r < 7; r++) week.push(padded[c * 7 + r]);
+        weeks.push(week);
+      }
+
+      const colorFor = (count) => {
+        if (count === 0) return "var(--line)";
+        const ratio = count / maxCount;
+        if (ratio <= 0.25) return "#bfdbfe";
+        if (ratio <= 0.5) return "#60a5fa";
+        if (ratio <= 0.75) return "#2563eb";
+        return "#1e40af";
+      };
+
+      return (
+        <div className="card p-4 mb-4">
+          <div className="flex items-baseline justify-between mb-3">
+            <div className="mono text-xs uppercase tracking-widest" style={{ color: "var(--ink-faint)" }}>近90天打卡热力</div>
+            <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>共 {days.filter(d => d.count > 0).length} 天有打卡</div>
+          </div>
+          <div style={{ overflowX: "auto", paddingBottom: 4 }}>
+            <div style={{ display: "flex", gap: 3, minWidth: "fit-content" }}>
+              {weeks.map((week, ci) => (
+                <div key={ci} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                  {week.map((d, ri) => {
+                    if (!d) return <div key={ri} style={{ width: 12, height: 12 }} />;
+                    const isToday = d.date === todayStrVal;
+                    return (
+                      <div
+                        key={ri}
+                        title={`${d.month}/${d.day}: ${d.count} 次`}
+                        style={{
+                          width: 12, height: 12, borderRadius: 3,
+                          background: colorFor(d.count),
+                          boxShadow: isToday ? "0 0 0 1.5px var(--accent)" : "none",
+                          transition: "background 0.2s ease",
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* 图例 */}
+          <div className="flex items-center gap-1 mt-3 mono text-xs" style={{ color: "var(--ink-faint)" }}>
+            <span>少</span>
+            {["var(--line)", "#bfdbfe", "#60a5fa", "#2563eb", "#1e40af"].map((c, i) => (
+              <div key={i} style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
+            ))}
+            <span>多</span>
+          </div>
+        </div>
+      );
+    }
+
+    // 趋势折线图（SVG）
+    function TrendChart({ days }) {
+      const W = 320, H = 100, P = 12;
+      const maxV = Math.max(1, ...days.map(d => d.count));
+      const stepX = (W - P * 2) / Math.max(1, days.length - 1);
+      const points = days.map((d, i) => {
+        const x = P + i * stepX;
+        const y = H - P - (d.count / maxV) * (H - P * 2);
+        return { x, y, ...d };
+      });
+
+      const linePath = points.map((p, i) => (i === 0 ? `M${p.x},${p.y}` : `L${p.x},${p.y}`)).join(" ");
+      const areaPath = `${linePath} L${points[points.length-1].x},${H-P} L${P},${H-P} Z`;
+
+      const total = days.reduce((s, d) => s + d.count, 0);
+      const activeCount = days.filter(d => d.count > 0).length;
+
+      return (
+        <div className="card p-4 mb-4">
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="mono text-xs uppercase tracking-widest" style={{ color: "var(--ink-faint)" }}>近14天打卡趋势</div>
+            <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{activeCount}/14 天 · {total} 次</div>
+          </div>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "auto", display: "block" }}>
+            <defs>
+              <linearGradient id="trendArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            {/* 横向网格线 */}
+            {[0, 0.5, 1].map((r, i) => {
+              const y = H - P - r * (H - P * 2);
+              return <line key={i} x1={P} y1={y} x2={W-P} y2={y} stroke="var(--line)" strokeWidth="0.5" strokeDasharray="2 2" />;
+            })}
+            {/* 区域填充 */}
+            <path d={areaPath} fill="url(#trendArea)" />
+            {/* 折线 */}
+            <path d={linePath} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            {/* 数据点 */}
+            {points.map((p, i) => (
+              <g key={i}>
+                {p.count > 0 && (
+                  <circle cx={p.x} cy={p.y} r="3" fill="#2563eb" stroke="white" strokeWidth="1.5" />
+                )}
+              </g>
+            ))}
+          </svg>
+          {/* X 轴标签 */}
+          <div className="flex justify-between mono text-xs mt-1" style={{ color: "var(--ink-faint)" }}>
+            <span>{days[0].label}</span>
+            <span>{days[Math.floor(days.length/2)].label}</span>
+            <span>{days[days.length-1].label}</span>
+          </div>
+        </div>
+      );
+    }
+
+    function BottomNav({ tab, setTab, unresolvedCount }) {
+      const tabs = [
+        { id: "plan", icon: "layers", label: "计划" },
+        { id: "notes", icon: "lightbulb", label: "难点本", badge: unresolvedCount },
+        { id: "extra", icon: "sparkles", label: "额外" },
+        { id: "history", icon: "calendar", label: "记录" },
+      ];
+      return (
+        <nav style={{
+          position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)",
+          width: "100%", maxWidth: 480,
+          background: "var(--bg-card)", borderTop: "1px solid var(--line)",
+          display: "flex", padding: "8px 0 20px",
+          zIndex: 40,
+        }}>
+          {tabs.map(t => (
+            <button key={t.id} className={`tab-btn ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)} style={{ position: "relative" }}>
+              <LucideIcon name={t.icon} size={20} />
+              <span>{t.label}</span>
+              <div className="tab-dot" />
+              {t.badge > 0 && (
+                <span style={{
+                  position: "absolute", top: 4, right: "calc(50% - 22px)",
+                  background: "#dc2626", color: "white",
+                  fontSize: 10, fontWeight: 700,
+                  padding: "1px 5px", borderRadius: 999,
+                  minWidth: 16, textAlign: "center",
+                  fontFamily: "var(--font-mono)",
+                }}>{t.badge}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+      );
+    }
+
+    function GlobalStyles() {
+      return (
+        <style>{`
+          @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+          :root {
+            --bg: #f0f4ff;
+            --bg-card: #f8faff;
+            --ink: #0f1c3f;
+            --ink-soft: #3d5080;
+            --ink-faint: #8a9cc2;
+            --accent: #2563eb;
+            --accent-soft: #dbeafe;
+            --line: #d5e0f7;
+            --font-display: 'Fraunces', Georgia, serif;
+            --font-body: 'Manrope', system-ui, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+          }
+          * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+          .display { font-family: var(--font-display); letter-spacing: -0.02em; }
+          .mono { font-family: var(--font-mono); }
+          .card { background: var(--bg-card); border: 1px solid var(--line); border-radius: 18px; }
+          .input {
+            width: 100%; background: transparent; border: none;
+            border-bottom: 1.5px solid var(--line); padding: 10px 0;
+            font-size: 16px; font-family: var(--font-body); color: var(--ink);
+            outline: none; transition: border-color 0.15s ease;
+          }
+          .input:focus { border-color: var(--accent); }
+          textarea.input { border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+          textarea.input:focus { border-color: var(--accent); }
+          .btn-primary {
+            background: var(--accent); color: white; border: none;
+            border-radius: 14px; padding: 14px 20px;
+            font-weight: 600; font-size: 15px; cursor: pointer;
+            transition: transform 0.1s ease; font-family: var(--font-body);
+          }
+          .btn-primary:active { transform: scale(0.98); }
+          .btn-primary:disabled { cursor: not-allowed; }
+          .btn-ghost {
+            background: transparent; color: var(--ink);
+            border: 1px solid var(--line); border-radius: 14px;
+            padding: 12px 18px; font-weight: 500; cursor: pointer;
+            transition: border-color 0.15s ease; font-family: var(--font-body);
+          }
+          .btn-ghost:hover { border-color: var(--ink); }
+          .tab-btn {
+            flex: 1; padding: 8px 8px 4px; background: transparent; border: none;
+            font-family: var(--font-body); font-size: 11px; font-weight: 600;
+            color: var(--ink-faint); cursor: pointer;
+            display: flex; flex-direction: column; align-items: center; gap: 3px;
+            transition: color 0.15s ease;
+          }
+          .tab-btn.active { color: var(--ink); }
+          .tab-btn.active .tab-dot { background: var(--accent); }
+          .tab-dot { width: 4px; height: 4px; border-radius: 50%; background: transparent; }
+          @keyframes slide-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+          .animate-in { animation: slide-in 0.2s ease-out; }
+          @keyframes slide-up { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+          .animate-up { animation: slide-up 0.25s ease-out; }
+          @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+          .toast {
+            position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+            background: var(--ink); color: var(--bg);
+            padding: 10px 20px; border-radius: 999px; font-size: 14px; font-weight: 500;
+            z-index: 100; animation: toast-in 0.2s ease-out;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.12); white-space: nowrap;
+          }
+          .paper-texture {
+            background-image:
+              radial-gradient(circle at 15% 25%, rgba(37,99,235,0.06) 0%, transparent 50%),
+              radial-gradient(circle at 85% 75%, rgba(79,70,229,0.04) 0%, transparent 50%);
+          }
+        `}</style>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
