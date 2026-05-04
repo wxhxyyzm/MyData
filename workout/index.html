@@ -1,0 +1,2334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#d9603b" />
+  <link rel="apple-touch-icon-precomposed" href="icon.png">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="icon" type="image/png" href="icon.png">
+  <title>WXH的运动日志</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- React 18 -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <!-- Babel standalone (transpiles JSX in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Lucide icons (UMD build) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; background: #f4efe6; }
+    * { box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    // ── Destructure React hooks ──
+    const { useState, useEffect, useMemo, useRef } = React;
+
+    // ── Lucide icons via UMD ──
+    const createIcon = (name) => {
+      return ({ size = 24, strokeWidth = 2, style, title, className }) => {
+        const el = React.createElement(
+          'svg',
+          {
+            xmlns: 'http://www.w3.org/2000/svg',
+            width: size, height: size,
+            viewBox: '0 0 24 24',
+            fill: 'none',
+            stroke: 'currentColor',
+            strokeWidth,
+            strokeLinecap: 'round',
+            strokeLinejoin: 'round',
+            style, className,
+            dangerouslySetInnerHTML: { __html: lucide.icons[name]?.[2]?.join('') || '' }
+          }
+        );
+        return el;
+      };
+    };
+    // Actually use lucide createIcons approach with SVG strings
+    const LucideIcon = ({ name, size=24, strokeWidth=2, style, className }) => {
+      const iconData = lucide.icons[name];
+      if (!iconData) return null;
+      const attrs = iconData[1] || {};
+      const paths = iconData[2] || [];
+      return (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width={size} height={size}
+          viewBox={attrs.viewBox || "0 0 24 24"}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={style}
+          className={className}
+          dangerouslySetInnerHTML={{ __html: paths.join('') }}
+        />
+      );
+    };
+    const Plus        = (p) => <LucideIcon name="plus" {...p} />;
+    const Trash2      = (p) => <LucideIcon name="trash-2" {...p} />;
+    const Flame       = (p) => <LucideIcon name="flame" {...p} />;
+    const Calendar    = (p) => <LucideIcon name="calendar" {...p} />;
+    const Dumbbell    = (p) => <LucideIcon name="dumbbell" {...p} />;
+    const Heart       = (p) => <LucideIcon name="heart" {...p} />;
+    const Check       = (p) => <LucideIcon name="check" {...p} />;
+    const Settings    = (p) => <LucideIcon name="settings" {...p} />;
+    const Pencil      = (p) => <LucideIcon name="pencil" {...p} />;
+    const Download    = (p) => <LucideIcon name="download" {...p} />;
+    const X           = (p) => <LucideIcon name="x" {...p} />;
+    const Clock       = (p) => <LucideIcon name="clock" {...p} />;
+    const TrendingUp  = (p) => <LucideIcon name="trending-up" {...p} />;
+
+
+// ================================
+// Supabase storage helpers
+// ================================
+const SUPABASE_URL = "https://ettxqjdtrbjqoctwmprw.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0dHhxamR0cmJqcW9jdHdtcHJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTI5NzYsImV4cCI6MjA5MjE2ODk3Nn0.o5JdtIHNIRu2Bthbyckh6PqmsTF09u31wPr12xhBaYI";
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// ── ID 生成：纯整数，兼容 Supabase bigint ──
+function genId() {
+  // Date.now() 是13位整数，加3位随机避免同毫秒冲突
+  return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+}
+
+async function loadEntries() {
+  const { data, error } = await db
+    .from("workout_entries")
+    .select("id, data")
+    .order("id", { ascending: false });
+  if (error) throw error; // ← 直接抛出，让调用方决定怎么显示
+  return (data || []).map(row => ({ ...row.data, id: row.id }));
+}
+
+// 新增单条
+async function insertEntry(entry) {
+  try {
+    const { error } = await db
+      .from("workout_entries")
+      .insert({ id: entry.id, data: entry });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Insert entry failed:", e);
+    return false;
+  }
+}
+
+// 更新单条
+async function updateEntry(entry) {
+  try {
+    const { error } = await db
+      .from("workout_entries")
+      .update({ data: entry })
+      .eq("id", entry.id);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Update entry failed:", e);
+    return false;
+  }
+}
+
+// 删除单条
+async function deleteEntryById(id) {
+  try {
+    const { error } = await db
+      .from("workout_entries")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Delete entry failed:", e);
+    return false;
+  }
+}
+
+async function loadCustom() {
+  const { data, error } = await db
+    .from("workout_custom")
+    .select("data")
+    .eq("id", 1)
+    .maybeSingle();
+  if (error) throw error; // ← 直接抛出真实错误（maybeSingle 对"无记录"不会抛错）
+  if (data) {
+    const parsed = data.data;
+    return {
+      cardio:     Array.isArray(parsed.cardio)     ? parsed.cardio     : [],
+      strength:   Array.isArray(parsed.strength)   ? parsed.strength   : [],
+      locations:  Array.isArray(parsed.locations)  ? parsed.locations  : [],
+    };
+  }
+  return { cardio: [], strength: [], locations: [] };
+}
+
+async function saveCustom(custom) {
+  try {
+    const { error } = await db
+      .from("workout_custom")
+      .upsert({ id: 1, data: custom, updated_at: new Date().toISOString() });
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Save custom failed:", e);
+    return false;
+  }
+}
+
+// ================================
+// Exercise presets
+// ================================
+const CARDIO_PRESETS = [
+  { name: "跳操", caloriesPerMin: 8, emoji: "💃" },
+  { name: "爬坡", caloriesPerMin: 9, emoji: "⛰️" },
+  { name: "骑行", caloriesPerMin: 7, emoji: "🚴" },
+  { name: "跳绳", caloriesPerMin: 12, emoji: "🪢" },
+  { name: "游泳", caloriesPerMin: 11, emoji: "🏊" },
+];
+
+const STRENGTH_PRESETS = [
+  { name: "深蹲", emoji: "🦵" },
+  { name: "俯卧撑", emoji: "💪" },
+  { name: "平板支撑", emoji: "🧘" },
+  { name: "卷腹", emoji: "🔥" },
+  { name: "臀桥", emoji: "🍑" },
+  { name: "哑铃", emoji: "🏋️" },
+];
+
+const MOOD_OPTIONS = [
+  { key: "energized", emoji: "💪", label: "充满能量" },
+  { key: "calm", emoji: "😌", label: "平静" },
+  { key: "tired", emoji: "😮‍💨", label: "疲惫" },
+  { key: "struggling", emoji: "🥵", label: "吃力" },
+];
+
+const DEFAULT_LOCATION_PRESETS = [
+  { key: "home", emoji: "🏠", label: "家里" },
+  { key: "gym", emoji: "🏋️", label: "健身房" },
+  { key: "activity_room", emoji: "🏛️", label: "活动室" },
+  { key: "outdoor", emoji: "🌳", label: "户外" },
+  { key: "travel", emoji: "✈️", label: "出差" },
+];
+
+// Curated emoji palettes for each context
+const EMOJI_PALETTE_EXERCISE = [
+  // Sports & fitness
+  "🏃", "🚶", "🧘", "🤸", "🤾", "🤺", "🥊", "🥋", "⛹️", "🏋️",
+  "🚴", "🚵", "🏊", "🏄", "🏇", "⛷️", "🏂", "🪂", "🧗", "🤽",
+  // Equipment & activities
+  "💪", "🦵", "🦶", "🔥", "⚡", "💧", "💦", "🌊", "🌀", "🎯",
+  "⚽", "🏀", "🏐", "🏈", "⚾", "🎾", "🏸", "🏓", "🥏", "⛳",
+  "🎳", "🏒", "🥍", "🤹", "🎪", "🎨", "🎭", "🎬", "🎸", "🥁",
+  // Nature & cute
+  "🌟", "✨", "💫", "🌈", "🪷", "🌸", "🍃", "🌱", "🌵", "🌻",
+  "🐢", "🐇", "🐿️", "🦋", "🐝", "🐬", "🦩", "🦅", "🐺", "🦊",
+];
+
+const EMOJI_PALETTE_LOCATION = [
+  // Places
+  "🏠", "🏡", "🏢", "🏛️", "🏟️", "🏫", "🏥", "🏨", "⛪", "🕌",
+  "🏞️", "🏕️", "🏝️", "🏖️", "🌳", "🌲", "🌴", "🌾", "⛰️", "🗻",
+  // Transport & travel
+  "✈️", "🚂", "🚗", "🚕", "🏍️", "🚲", "⛵", "🛥️", "🏜️", "🌉",
+  // Indoor vibes
+  "🛋️", "🪑", "🖼️", "🪟", "🚪", "🛁", "🎪", "🎡", "🎢", "🎠",
+  // Misc spots
+  "📍", "🗺️", "🧭", "🌍", "🌎", "🌏", "⭐", "🔖", "🏁", "🎯",
+];
+
+// ================================
+// Utility functions
+// ================================
+function formatDate(dateStr) {
+  const d = new Date(dateStr);
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}-${dd}`;
+}
+
+function todayStr() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function daysBetween(a, b) {
+  const d1 = new Date(a);
+  const d2 = new Date(b);
+  return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+}
+
+// ================================
+// Main App
+// ================================
+function App() {
+  const [entries, setEntries] = useState([]);
+  const [custom, setCustom] = useState({ cardio: [], strength: [], locations: [] });
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null); // ← 新增：记录加载错误
+  const [tab, setTab] = useState("today"); // today | log | stats | settings
+  const [toast, setToast] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
+  const toastTimerRef = useRef(null); // ← 新增：防止 toast 互抢 timer
+
+  useEffect(() => {
+    Promise.all([loadEntries(), loadCustom()])
+      .then(([e, c]) => {
+        setEntries(e);
+        setCustom(c);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error("初始化失败:", err);
+        setLoadError(err);
+        setLoading(false);
+      });
+  }, []);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 1800);
+  };
+
+  const addEntry = async (entry) => {
+    const newEntry = { ...entry, id: genId() };
+    const previous = entries;
+    const updated = [newEntry, ...entries];
+    setEntries(updated);
+    const ok = await insertEntry(newEntry);
+    if (ok) {
+      showToast("已记录 ✓");
+    } else {
+      setEntries(previous); // ← 回滚
+      showToast("保存失败，请检查网络");
+    }
+  };
+
+  const updateEntryInDB = async (id, patch) => {
+    const existing = entries.find(e => e.id === id);
+    if (!existing) return;
+    const newEntry = { ...existing, ...patch };
+    const previous = entries;
+    const updated = entries.map((e) => (e.id === id ? newEntry : e));
+    setEntries(updated);
+    const ok = await updateEntry(newEntry);
+    if (ok) {
+      showToast("已更新 ✓");
+      setEditingEntry(null);
+    } else {
+      setEntries(previous); // ← 回滚
+      showToast("更新失败，请检查网络");
+    }
+  };
+
+  const deleteEntry = async (id) => {
+    const previous = entries;
+    const updated = entries.filter((e) => e.id !== id);
+    setEntries(updated);
+    const ok = await deleteEntryById(id);
+    if (ok) {
+      showToast("已删除");
+    } else {
+      setEntries(previous); // ← 回滚
+      showToast("删除失败，请检查网络");
+    }
+  };
+
+  // Add custom preset (exercise or location). Avoids duplicates.
+  const addCustomPreset = async (kind, item) => {
+    // kind: 'cardio' | 'strength' | 'locations'
+    const list = custom[kind] || [];
+    // Dedupe by name (for exercises) or label (for locations)
+    const matchKey = kind === "locations" ? "label" : "name";
+    if (list.some((x) => x[matchKey] === item[matchKey])) return;
+    const updated = { ...custom, [kind]: [...list, item] };
+    setCustom(updated);
+    await saveCustom(updated);
+  };
+
+  const removeCustomPreset = async (kind, matchValue) => {
+    const list = custom[kind] || [];
+    const matchKey = kind === "locations" ? "label" : "name";
+    const updated = { ...custom, [kind]: list.filter((x) => x[matchKey] !== matchValue) };
+    setCustom(updated);
+    await saveCustom(updated);
+    showToast("已移除");
+  };
+
+  const exportData = () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      entries,
+      custom,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `workouts_${todayStr()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("已导出 📦");
+  };
+
+  const importData = async (file) => {
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const incomingEntries = Array.isArray(payload.entries) ? payload.entries : [];
+      const incomingCustom = payload.custom || { cardio: [], strength: [], locations: [] };
+
+      // Merge: keep existing, add new ones by id
+      const existingIds = new Set(entries.map((e) => e.id));
+      const mergedEntries = [
+        ...incomingEntries.filter((e) => !existingIds.has(e.id)),
+        ...entries,
+      ];
+
+      // Merge custom presets — dedupe by name/label
+      const mergeList = (existing, incoming, key) => {
+        const seen = new Set(existing.map((x) => x[key]));
+        return [...existing, ...incoming.filter((x) => !seen.has(x[key]))];
+      };
+      const mergedCustom = {
+        cardio: mergeList(custom.cardio, incomingCustom.cardio || [], "name"),
+        strength: mergeList(custom.strength, incomingCustom.strength || [], "name"),
+        locations: mergeList(custom.locations, incomingCustom.locations || [], "label"),
+      };
+
+      setEntries(mergedEntries);
+      setCustom(mergedCustom);
+      // 批量 upsert 新记录（已存在的 id 会更新，不存在的会插入）
+      const newOnes = incomingEntries.filter((e) => !existingIds.has(e.id));
+      for (const e of newOnes) {
+        await insertEntry({ ...e, id: typeof e.id === 'number' ? Math.round(e.id) : genId() });
+      }
+      await saveCustom(mergedCustom);
+      showToast(`导入 ${newOnes.length} 条 ✓`);
+    } catch (e) {
+      console.error(e);
+      showToast("导入失败：文件格式错误");
+    }
+  };
+
+  return (
+    <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--ink)", fontFamily: "var(--font-body)" }}>
+      <style>{`
+        :root {
+          --bg: #f4efe6;
+          --bg-card: #fbf7ef;
+          --ink: #2a241c;
+          --ink-soft: #6b6055;
+          --ink-faint: #a59a8c;
+          --accent: #d9603b;
+          --accent-soft: #f2c9b5;
+          --accent-2: #5a7a4e;
+          --accent-2-soft: #c9d8c0;
+          --line: #e0d6c5;
+          --line-strong: #2a241c;
+          --font-display: 'Fraunces', 'Playfair Display', Georgia, serif;
+          --font-body: 'Manrope', 'Helvetica Neue', system-ui, sans-serif;
+          --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+        * { -webkit-tap-highlight-color: transparent; }
+
+        .display { font-family: var(--font-display); font-feature-settings: "ss01"; letter-spacing: -0.02em; }
+        .mono { font-family: var(--font-mono); }
+
+        .card {
+          background: var(--bg-card);
+          border: 1px solid var(--line);
+          border-radius: 18px;
+        }
+
+        .chip {
+          display: inline-flex; align-items: center; gap: 6px;
+          padding: 8px 14px;
+          border: 1px solid var(--line);
+          border-radius: 999px;
+          background: var(--bg-card);
+          font-size: 13px; font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .chip:hover { border-color: var(--ink); }
+        .chip.active {
+          background: var(--ink);
+          color: var(--bg);
+          border-color: var(--ink);
+        }
+
+        .btn-primary {
+          background: var(--accent);
+          color: white;
+          border: none;
+          border-radius: 14px;
+          padding: 14px 20px;
+          font-weight: 600;
+          font-size: 15px;
+          cursor: pointer;
+          transition: transform 0.1s ease;
+        }
+        .btn-primary:hover { transform: translateY(-1px); }
+        .btn-primary:active { transform: translateY(0); }
+        .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .btn-ghost {
+          background: transparent;
+          color: var(--ink);
+          border: 1px solid var(--line);
+          border-radius: 14px;
+          padding: 12px 18px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+        .btn-ghost:hover { border-color: var(--ink); }
+
+        .input {
+          width: 100%;
+          background: transparent;
+          border: none;
+          border-bottom: 1.5px solid var(--line);
+          padding: 10px 0;
+          font-size: 16px;
+          font-family: var(--font-body);
+          color: var(--ink);
+          outline: none;
+          transition: border-color 0.15s ease;
+        }
+        .input:focus { border-color: var(--accent); }
+
+        .tab-btn {
+          flex: 1;
+          padding: 10px 8px;
+          background: transparent;
+          border: none;
+          font-family: var(--font-body);
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--ink-faint);
+          cursor: pointer;
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          transition: color 0.15s ease;
+        }
+        .tab-btn.active { color: var(--ink); }
+        .tab-btn.active .tab-dot {
+          background: var(--accent);
+        }
+        .tab-dot {
+          width: 4px; height: 4px; border-radius: 50%;
+          background: transparent;
+          transition: background 0.15s ease;
+        }
+
+        @keyframes slide-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-in { animation: slide-in 0.25s ease-out; }
+
+        @keyframes toast-in {
+          from { opacity: 0; transform: translate(-50%, 10px); }
+          to { opacity: 1; transform: translate(-50%, 0); }
+        }
+        .toast {
+          position: fixed; bottom: 100px; left: 50%;
+          transform: translateX(-50%);
+          background: var(--ink); color: var(--bg);
+          padding: 10px 20px; border-radius: 999px;
+          font-size: 14px; font-weight: 500;
+          z-index: 100;
+          animation: toast-in 0.25s ease-out;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+
+        .divider-dot {
+          display: inline-block;
+          width: 3px; height: 3px;
+          border-radius: 50%;
+          background: var(--ink-faint);
+          margin: 0 8px;
+          vertical-align: middle;
+        }
+
+        /* Paper texture */
+        .paper-texture {
+          background-image:
+            radial-gradient(circle at 20% 30%, rgba(217, 96, 59, 0.04) 0%, transparent 50%),
+            radial-gradient(circle at 80% 80%, rgba(90, 122, 78, 0.04) 0%, transparent 50%);
+        }
+      `}</style>
+
+      <div className="paper-texture max-w-md mx-auto min-h-screen pb-24 relative">
+        {/* Header */}
+        <header className="px-5 pt-8 pb-4">
+          <div className="flex items-baseline justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+                Daydayup
+              </div>
+              <h1 className="display text-4xl font-bold mt-1">WXH的运动日志</h1>
+            </div>
+            <div className="text-right">
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                {new Date().toLocaleDateString("zh-CN", { weekday: "short" })}
+              </div>
+              <div className="display text-2xl font-semibold" style={{ color: "var(--accent)" }}>
+                {new Date().getDate()}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="px-5">
+          {loading ? (
+            <div className="text-center py-20" style={{ color: "var(--ink-faint)" }}>
+              <div className="mono text-sm">loading...</div>
+            </div>
+          ) : loadError ? (
+            <div className="card p-8 text-center animate-in">
+              <div className="text-4xl mb-3">⚠️</div>
+              <div className="display text-lg font-semibold mb-2">无法连接到云端</div>
+              <div className="text-sm mb-5" style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
+                数据没有丢失，只是暂时加载不到。<br/>
+                可能是网络问题，或者 Supabase 配置有变动。
+              </div>
+              <button className="btn-primary" onClick={() => window.location.reload()}>
+                重新加载
+              </button>
+              <div className="mt-4 text-xs mono" style={{ color: "var(--ink-faint)" }}>
+                {String(loadError?.message || loadError)}
+              </div>
+            </div>
+          ) : (
+            <>
+              {tab === "today" && <TodayView entries={entries} onAdd={addEntry} custom={custom} onAddCustomPreset={addCustomPreset} />}
+              {tab === "log" && <LogView entries={entries} onDelete={deleteEntry} onEdit={setEditingEntry} custom={custom} />}
+              {tab === "stats" && <StatsView entries={entries} custom={custom} />}
+              {tab === "settings" && <SettingsView custom={custom} onRemoveCustom={removeCustomPreset} onExport={exportData} onImport={importData} entryCount={entries.length} />}
+            </>
+          )}
+        </main>
+
+        {/* Bottom tab bar */}
+        <nav className="fixed bottom-0 left-0 right-0 z-50">
+          <div className="max-w-md mx-auto px-5 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+            <div className="flex items-center rounded-2xl p-1" style={{ background: "var(--bg-card)", border: "1px solid var(--line)" }}>
+              <button className={`tab-btn ${tab === "today" ? "active" : ""}`} onClick={() => setTab("today")}>
+                <Plus size={20} strokeWidth={2} />
+                <span>记录</span>
+                <span className="tab-dot"></span>
+              </button>
+              <button className={`tab-btn ${tab === "log" ? "active" : ""}`} onClick={() => setTab("log")}>
+                <Calendar size={20} strokeWidth={2} />
+                <span>日志</span>
+                <span className="tab-dot"></span>
+              </button>
+              <button className={`tab-btn ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>
+                <TrendingUp size={20} strokeWidth={2} />
+                <span>统计</span>
+                <span className="tab-dot"></span>
+              </button>
+              <button className={`tab-btn ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
+                <Settings size={20} strokeWidth={2} />
+                <span>设置</span>
+                <span className="tab-dot"></span>
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        {toast && <div className="toast">{toast}</div>}
+
+        {editingEntry && (
+          <EditEntryModal
+            entry={editingEntry}
+            custom={custom}
+            onAddCustomPreset={addCustomPreset}
+            onSave={(patch) => updateEntryInDB(editingEntry.id, patch)}
+            onCancel={() => setEditingEntry(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ================================
+// Today / Record View
+// ================================
+function TodayView({ entries, onAdd, custom, onAddCustomPreset }) {
+  const [mode, setMode] = useState("cardio"); // cardio | strength
+
+  const todayEntries = entries.filter((e) => e.date === todayStr());
+  const todayCalories = todayEntries.reduce((sum, e) => sum + (e.calories || 0), 0);
+  const todayMinutes = todayEntries.filter((e) => e.type === "cardio").reduce((s, e) => s + (e.duration || 0), 0);
+  const todayReps = todayEntries.filter((e) => e.type === "strength").reduce((s, e) => s + (e.sets || 0) * (e.reps || 0), 0);
+
+  return (
+    <div className="animate-in">
+      {/* Today summary */}
+      <div className="card p-5 mb-5 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10" style={{ background: "var(--accent)", transform: "translate(40%, -40%)" }}></div>
+        <div className="relative">
+          <div className="text-xs uppercase tracking-widest mono mb-2" style={{ color: "var(--ink-faint)" }}>
+            Today · 今日
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="display text-5xl font-bold">{todayEntries.length}</span>
+            <span className="text-sm" style={{ color: "var(--ink-soft)" }}>次训练</span>
+          </div>
+          <div className="flex items-center gap-4 mt-3 text-sm flex-wrap" style={{ color: "var(--ink-soft)" }}>
+            {todayMinutes > 0 && (
+              <span className="flex items-center gap-1">
+                <Clock size={14} style={{ color: "var(--accent-2)" }} />
+                <span className="mono font-semibold">{todayMinutes}</span> 分钟
+              </span>
+            )}
+            {todayCalories > 0 && (
+              <span className="flex items-center gap-1">
+                <Flame size={14} style={{ color: "var(--accent)" }} />
+                <span className="mono font-semibold">{todayCalories}</span> kcal
+              </span>
+            )}
+            {todayReps > 0 && (
+              <span className="flex items-center gap-1">
+                <Dumbbell size={14} style={{ color: "var(--accent-2)" }} />
+                <span className="mono font-semibold">{todayReps}</span> 次
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Mode switcher */}
+      <div className="flex gap-2 mb-4">
+        <button className={`chip ${mode === "cardio" ? "active" : ""}`} onClick={() => setMode("cardio")} style={{ flex: 1, justifyContent: "center" }}>
+          <Heart size={14} /> 有氧
+        </button>
+        <button className={`chip ${mode === "strength" ? "active" : ""}`} onClick={() => setMode("strength")} style={{ flex: 1, justifyContent: "center" }}>
+          <Dumbbell size={14} /> 无氧
+        </button>
+      </div>
+
+      {mode === "cardio"
+        ? <CardioForm onAdd={onAdd} custom={custom} onAddCustomPreset={onAddCustomPreset} />
+        : <StrengthForm onAdd={onAdd} custom={custom} onAddCustomPreset={onAddCustomPreset} />
+      }
+    </div>
+  );
+}
+
+function CardioForm({ onAdd, custom, onAddCustomPreset }) {
+  const allPresets = useMemo(() => [...CARDIO_PRESETS, ...(custom?.cardio || [])], [custom]);
+  const [selected, setSelected] = useState(allPresets[0]);
+  const [customName, setCustomName] = useState("");
+  const [customEmoji, setCustomEmoji] = useState("🏃");
+  const [duration, setDuration] = useState("");
+  const [calories, setCalories] = useState("");
+  const [date, setDate] = useState(todayStr());
+  const [useCustom, setUseCustom] = useState(false);
+  const [extras, setExtras] = useState(emptyExtras());
+  const [submitting, setSubmitting] = useState(false); // ← 防双击
+
+  const canSubmit = duration && parseFloat(duration) > 0 && (useCustom ? customName.trim() : true);
+
+  const submit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    try {
+      // If it's a custom one, save as preset for future use
+      if (useCustom) {
+        await onAddCustomPreset("cardio", {
+          name: customName.trim(),
+          emoji: customEmoji || "🏃",
+        });
+      }
+
+      await onAdd({
+        type: "cardio",
+        name: useCustom ? customName.trim() : selected.name,
+        emoji: useCustom ? (customEmoji || "🏃") : selected.emoji,
+        duration: parseFloat(duration),
+        calories: parseInt(calories) || 0,
+        date,
+        ...extras,
+      });
+      setDuration("");
+      setCalories("");
+      setCustomName("");
+      setCustomEmoji("🏃");
+      setUseCustom(false);
+      setExtras(emptyExtras());
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="card p-5 animate-in">
+      <div className="text-xs uppercase tracking-widest mono mb-3" style={{ color: "var(--ink-faint)" }}>
+        选择项目
+      </div>
+      <div className="flex flex-wrap gap-2 mb-5">
+        {allPresets.map((p) => (
+          <button
+            key={p.name}
+            className={`chip ${!useCustom && selected?.name === p.name ? "active" : ""}`}
+            onClick={() => { setSelected(p); setUseCustom(false); }}
+          >
+            <span>{p.emoji}</span> {p.name}
+          </button>
+        ))}
+        <button className={`chip ${useCustom ? "active" : ""}`} onClick={() => { setUseCustom(true); }}>
+          + 新项目
+        </button>
+      </div>
+
+      {useCustom && (
+        <div className="mb-5 p-3 rounded-xl" style={{ background: "var(--bg)", border: "1px dashed var(--line)" }}>
+          <div className="text-xs mono mb-2" style={{ color: "var(--ink-soft)" }}>
+            ℹ️ 保存后会成为新的预设项目
+          </div>
+          <div className="flex gap-2 mb-3 items-start">
+            <EmojiPicker value={customEmoji} onChange={setCustomEmoji} palette={EMOJI_PALETTE_EXERCISE} />
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder="项目名称，例如：椭圆机"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-5 mb-5">
+        <div>
+          <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+            时长 (分钟)
+          </label>
+          <input className="input mono" type="number" inputMode="decimal" placeholder="30" value={duration} onChange={(e) => setDuration(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+            卡路里
+          </label>
+          <input
+            className="input mono"
+            type="number"
+            inputMode="decimal"
+            placeholder="手动填写"
+            value={calories}
+            onChange={(e) => setCalories(e.target.value)}
+          />
+        </div>
+      </div>
+
+      <div className="mb-5">
+        <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+          日期
+        </label>
+        <input className="input mono" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+
+      <ExtraFields extras={extras} setExtras={setExtras} custom={custom} onAddCustomPreset={onAddCustomPreset} />
+
+      <button className="btn-primary w-full" onClick={submit} disabled={!canSubmit || submitting}>
+        <Check size={16} style={{ display: "inline", marginRight: 6, verticalAlign: "-3px" }} />
+        {submitting ? "保存中..." : "记录这次训练"}
+      </button>
+    </div>
+  );
+}
+
+function StrengthForm({ onAdd, custom, onAddCustomPreset }) {
+  const allPresets = useMemo(() => [...STRENGTH_PRESETS, ...(custom?.strength || [])], [custom]);
+  const [selected, setSelected] = useState(allPresets[0]);
+  const [customName, setCustomName] = useState("");
+  const [customEmoji, setCustomEmoji] = useState("💪");
+  const [sets, setSets] = useState("");
+  const [reps, setReps] = useState("");
+  const [date, setDate] = useState(todayStr());
+  const [useCustom, setUseCustom] = useState(false);
+  const [extras, setExtras] = useState(emptyExtras());
+  const [submitting, setSubmitting] = useState(false);
+
+  const canSubmit = sets && reps && parseInt(sets) > 0 && parseInt(reps) > 0 && (useCustom ? customName.trim() : true);
+
+  const submit = async () => {
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    try {
+      if (useCustom) {
+        await onAddCustomPreset("strength", {
+          name: customName.trim(),
+          emoji: customEmoji || "💪",
+        });
+      }
+
+      await onAdd({
+        type: "strength",
+        name: useCustom ? customName.trim() : selected.name,
+        emoji: useCustom ? (customEmoji || "💪") : selected.emoji,
+        sets: parseInt(sets),
+        reps: parseInt(reps),
+        calories: 0,
+        date,
+        ...extras,
+      });
+      setSets("");
+      setReps("");
+      setCustomName("");
+      setCustomEmoji("💪");
+      setUseCustom(false);
+      setExtras(emptyExtras());
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="card p-5 animate-in">
+      <div className="text-xs uppercase tracking-widest mono mb-3" style={{ color: "var(--ink-faint)" }}>
+        选择动作
+      </div>
+      <div className="flex flex-wrap gap-2 mb-5">
+        {allPresets.map((p) => (
+          <button
+            key={p.name}
+            className={`chip ${!useCustom && selected?.name === p.name ? "active" : ""}`}
+            onClick={() => { setSelected(p); setUseCustom(false); }}
+          >
+            <span>{p.emoji}</span> {p.name}
+          </button>
+        ))}
+        <button className={`chip ${useCustom ? "active" : ""}`} onClick={() => setUseCustom(true)}>
+          + 新动作
+        </button>
+      </div>
+
+      {useCustom && (
+        <div className="mb-5 p-3 rounded-xl" style={{ background: "var(--bg)", border: "1px dashed var(--line)" }}>
+          <div className="text-xs mono mb-2" style={{ color: "var(--ink-soft)" }}>
+            ℹ️ 保存后会成为新的预设动作
+          </div>
+          <div className="flex gap-2 items-start">
+            <EmojiPicker value={customEmoji} onChange={setCustomEmoji} palette={EMOJI_PALETTE_EXERCISE} />
+            <input
+              className="input"
+              style={{ flex: 1 }}
+              placeholder="动作名称，例如：硬拉"
+              value={customName}
+              onChange={(e) => setCustomName(e.target.value)}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-5 mb-5">
+        <div>
+          <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+            组数
+          </label>
+          <input className="input mono" type="number" inputMode="numeric" placeholder="3" value={sets} onChange={(e) => setSets(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+            每组次数
+          </label>
+          <input className="input mono" type="number" inputMode="numeric" placeholder="15" value={reps} onChange={(e) => setReps(e.target.value)} />
+        </div>
+      </div>
+
+      <div className="mb-5">
+        <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+          日期
+        </label>
+        <input className="input mono" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </div>
+
+      <ExtraFields extras={extras} setExtras={setExtras} custom={custom} onAddCustomPreset={onAddCustomPreset} />
+
+      <button className="btn-primary w-full" onClick={submit} disabled={!canSubmit || submitting}>
+        <Check size={16} style={{ display: "inline", marginRight: 6, verticalAlign: "-3px" }} />
+        {submitting ? "保存中..." : "记录这次训练"}
+      </button>
+    </div>
+  );
+}
+
+// ================================
+// Extra fields (shared between cardio & strength)
+// ================================
+function emptyExtras() {
+  return { mood: null, difficulty: 0, location: null, customLocation: "", note: "" };
+}
+
+// ================================
+// Emoji Picker — click current emoji to open palette
+// ================================
+function EmojiPicker({ value, onChange, palette, size = 50 }) {
+  const [open, setOpen] = useState(false);
+  const ref = React.useRef(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          width: size, height: size,
+          borderRadius: 12,
+          border: `1.5px solid ${open ? "var(--accent)" : "var(--line)"}`,
+          background: "var(--bg-card)",
+          fontSize: 26, lineHeight: 1,
+          cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "all 0.15s ease",
+        }}
+        title="换个 emoji"
+      >
+        {value || "🙂"}
+      </button>
+      {open && (
+        <div
+          style={{
+            position: "absolute", top: size + 8, left: 0, zIndex: 50,
+            width: 280,
+            background: "var(--bg-card)",
+            border: "1px solid var(--line)",
+            borderRadius: 14,
+            padding: 10,
+            boxShadow: "0 8px 24px rgba(42, 36, 28, 0.12)",
+            animation: "slide-in 0.18s ease-out",
+          }}
+        >
+          <div className="text-xs mono mb-2" style={{ color: "var(--ink-faint)" }}>
+            挑一个 emoji
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(8, 1fr)",
+              gap: 4,
+              maxHeight: 220,
+              overflowY: "auto",
+            }}
+          >
+            {palette.map((e) => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => { onChange(e); setOpen(false); }}
+                style={{
+                  fontSize: 22, lineHeight: 1,
+                  width: "100%", aspectRatio: "1",
+                  background: value === e ? "var(--accent-soft)" : "transparent",
+                  border: "none", borderRadius: 8,
+                  cursor: "pointer",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "background 0.1s ease",
+                }}
+                onMouseEnter={(ev) => { if (value !== e) ev.currentTarget.style.background = "var(--bg)"; }}
+                onMouseLeave={(ev) => { if (value !== e) ev.currentTarget.style.background = "transparent"; }}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExtraFields({ extras, setExtras, custom, onAddCustomPreset }) {
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [customLocOpen, setCustomLocOpen] = useState(false);
+  const [customLocEmoji, setCustomLocEmoji] = useState("📍");
+
+  const allLocations = useMemo(
+    () => [...DEFAULT_LOCATION_PRESETS, ...(custom?.locations || [])],
+    [custom]
+  );
+
+  const update = (patch) => setExtras({ ...extras, ...patch });
+
+  // When user types a new location, save as preset on the fly
+  const handleCustomLocCommit = async () => {
+    const label = (extras.customLocation || "").trim();
+    if (!label) return;
+    // Check if it already exists in presets
+    const existing = allLocations.find((l) => l.label === label);
+    if (existing) {
+      update({ location: existing.key, customLocation: "" });
+      setCustomLocOpen(false);
+      return;
+    }
+    // Save as new preset with auto-generated key
+    const newKey = `user_${Date.now()}`;
+    await onAddCustomPreset("locations", { key: newKey, emoji: customLocEmoji || "📍", label });
+    update({ location: newKey, customLocation: "" });
+    setCustomLocOpen(false);
+    setCustomLocEmoji("📍");
+  };
+
+  return (
+    <div className="mb-5" style={{ paddingTop: 20, borderTop: "1px dashed var(--line)" }}>
+      {/* Mood */}
+      <div className="mb-5">
+        <label className="text-xs uppercase tracking-widest mono block mb-2" style={{ color: "var(--ink-faint)" }}>
+          今天感觉 <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>· 可选</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {MOOD_OPTIONS.map((m) => {
+            const active = extras.mood === m.key;
+            return (
+              <button
+                key={m.key}
+                onClick={() => update({ mood: active ? null : m.key })}
+                className="flex flex-col items-center justify-center"
+                style={{
+                  width: 58, padding: "8px 4px",
+                  border: `1.5px solid ${active ? "var(--ink)" : "var(--line)"}`,
+                  borderRadius: 12,
+                  background: active ? "var(--ink)" : "var(--bg-card)",
+                  color: active ? "var(--bg)" : "var(--ink)",
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                  fontFamily: "var(--font-body)",
+                }}
+              >
+                <span style={{ fontSize: 22, lineHeight: 1 }}>{m.emoji}</span>
+                <span style={{ fontSize: 10, marginTop: 4, opacity: 0.9 }}>{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Difficulty */}
+      <div className="mb-5">
+        <label className="text-xs uppercase tracking-widest mono block mb-2" style={{ color: "var(--ink-faint)" }}>
+          难度 <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>· 可选</span>
+        </label>
+        <div className="flex items-center gap-2">
+          {[1, 2, 3, 4, 5].map((n) => {
+            const filled = n <= extras.difficulty;
+            return (
+              <button
+                key={n}
+                onClick={() => update({ difficulty: extras.difficulty === n ? 0 : n })}
+                style={{
+                  background: "none", border: "none", padding: 4, cursor: "pointer",
+                  fontSize: 28, lineHeight: 1,
+                  filter: filled ? "none" : "grayscale(1) opacity(0.3)",
+                  transition: "filter 0.15s ease, transform 0.1s ease",
+                }}
+                onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.85)"}
+                onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+                onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+              >
+                ⭐
+              </button>
+            );
+          })}
+          {extras.difficulty > 0 && (
+            <span className="mono text-xs ml-1" style={{ color: "var(--ink-soft)" }}>
+              {["", "很轻松", "轻松", "适中", "困难", "极限"][extras.difficulty]}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Location */}
+      <div className="mb-5">
+        <label className="text-xs uppercase tracking-widest mono block mb-2" style={{ color: "var(--ink-faint)" }}>
+          场地 <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>· 可选</span>
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {allLocations.map((loc) => {
+            const active = extras.location === loc.key && !customLocOpen;
+            return (
+              <button
+                key={loc.key}
+                className={`chip ${active ? "active" : ""}`}
+                onClick={() => {
+                  setCustomLocOpen(false);
+                  update({ location: active ? null : loc.key, customLocation: "" });
+                }}
+              >
+                <span>{loc.emoji}</span> {loc.label}
+              </button>
+            );
+          })}
+          <button
+            className={`chip ${customLocOpen ? "active" : ""}`}
+            onClick={() => {
+              setCustomLocOpen(!customLocOpen);
+            }}
+          >
+            + 新场地
+          </button>
+        </div>
+        {customLocOpen && (
+          <div className="mt-3 p-3 rounded-xl" style={{ background: "var(--bg)", border: "1px dashed var(--line)" }}>
+            <div className="text-xs mono mb-2" style={{ color: "var(--ink-soft)" }}>
+              ℹ️ 保存后会成为新的预设场地
+            </div>
+            <div className="flex gap-2 items-start">
+              <EmojiPicker value={customLocEmoji} onChange={setCustomLocEmoji} palette={EMOJI_PALETTE_LOCATION} />
+              <input
+                className="input"
+                style={{ flex: 1 }}
+                placeholder="例如：公司楼下、姥姥家..."
+                value={extras.customLocation}
+                onChange={(e) => update({ customLocation: e.target.value })}
+                onBlur={handleCustomLocCommit}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleCustomLocCommit(); } }}
+                autoFocus
+              />
+            </div>
+            <div className="text-xs mono mt-2" style={{ color: "var(--ink-faint)" }}>
+              输入完成后点其他地方或按回车保存
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Note (collapsed by default) */}
+      {!noteOpen ? (
+        <button
+          onClick={() => setNoteOpen(true)}
+          style={{
+            background: "none", border: "1px dashed var(--line)", borderRadius: 10,
+            padding: "10px 14px", width: "100%",
+            fontSize: 13, color: "var(--ink-soft)",
+            cursor: "pointer", fontFamily: "var(--font-body)",
+            transition: "all 0.15s ease",
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--ink)"; e.currentTarget.style.color = "var(--ink)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--line)"; e.currentTarget.style.color = "var(--ink-soft)"; }}
+        >
+          ✎  加一段笔记...
+        </button>
+      ) : (
+        <div>
+          <label className="text-xs uppercase tracking-widest mono block mb-2" style={{ color: "var(--ink-faint)" }}>
+            笔记 <span style={{ textTransform: "none", letterSpacing: 0, opacity: 0.6 }}>· 可选</span>
+          </label>
+          <textarea
+            value={extras.note}
+            onChange={(e) => update({ note: e.target.value })}
+            placeholder="今天状态不错，最后十分钟都在爬坡..."
+            rows={3}
+            autoFocus
+            style={{
+              width: "100%",
+              background: "var(--bg)",
+              border: "1px solid var(--line)",
+              borderRadius: 10,
+              padding: "10px 12px",
+              fontSize: 14,
+              fontFamily: "var(--font-body)",
+              color: "var(--ink)",
+              outline: "none",
+              resize: "vertical",
+              lineHeight: 1.5,
+            }}
+            onFocus={(e) => e.target.style.borderColor = "var(--accent)"}
+            onBlur={(e) => e.target.style.borderColor = "var(--line)"}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ================================
+// Log View
+// ================================
+function LogView({ entries, onDelete, onEdit, custom }) {
+  const [filter, setFilter] = useState("all"); // all | cardio | strength
+
+  const filtered = entries.filter((e) => filter === "all" || e.type === filter);
+
+  // Group by date
+  const grouped = useMemo(() => {
+    const g = {};
+    filtered.forEach((e) => {
+      if (!g[e.date]) g[e.date] = [];
+      g[e.date].push(e);
+    });
+    return Object.entries(g).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [filtered]);
+
+  return (
+    <div className="animate-in">
+      <div className="flex gap-2 mb-5">
+        <button className={`chip ${filter === "all" ? "active" : ""}`} onClick={() => setFilter("all")}>
+          全部
+        </button>
+        <button className={`chip ${filter === "cardio" ? "active" : ""}`} onClick={() => setFilter("cardio")}>
+          <Heart size={13} /> 有氧
+        </button>
+        <button className={`chip ${filter === "strength" ? "active" : ""}`} onClick={() => setFilter("strength")}>
+          <Dumbbell size={13} /> 无氧
+        </button>
+      </div>
+
+      {grouped.length === 0 ? (
+        <div className="card p-10 text-center">
+          <div className="text-4xl mb-3">🌱</div>
+          <div className="display text-xl mb-1">还没有记录</div>
+          <div className="text-sm" style={{ color: "var(--ink-soft)" }}>去「记录」页开始你的第一次训练吧</div>
+        </div>
+      ) : (
+        grouped.map(([date, items]) => (
+          <div key={date} className="mb-6">
+            <div className="flex items-baseline justify-between mb-2 px-1">
+              <div className="display text-lg font-semibold">
+                {formatDate(date)}
+              </div>
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                {items.length} 项
+              </div>
+            </div>
+            <div className="card overflow-hidden">
+              {items.map((item, idx) => (
+                <LogItem
+                  key={item.id}
+                  item={item}
+                  custom={custom}
+                  isFirst={idx === 0}
+                  onDelete={() => onDelete(item.id)}
+                  onEdit={() => onEdit(item)}
+                />
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// Individual log item with swipe-to-delete
+function LogItem({ item, custom, isFirst, onDelete, onEdit }) {
+  const [swipeX, setSwipeX] = useState(0);
+  const [noteExpanded, setNoteExpanded] = useState(false);
+  const [startX, setStartX] = useState(null);
+  const [startY, setStartY] = useState(null);
+  const [gestureLocked, setGestureLocked] = useState(null); // null | 'horizontal' | 'vertical'
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const moodObj = item.mood ? MOOD_OPTIONS.find((m) => m.key === item.mood) : null;
+  const allLocs = [...DEFAULT_LOCATION_PRESETS, ...(custom?.locations || [])];
+  const locObj = item.location ? allLocs.find((l) => l.key === item.location) : null;
+  // Back-compat: if old entry has location="custom" + customLocation
+  const legacyCustomLoc = item.location === "custom" ? item.customLocation : null;
+
+  const NOTE_PREVIEW_LEN = 60;
+  const noteIsLong = item.note && item.note.length > NOTE_PREVIEW_LEN;
+
+  const handleTouchStart = (e) => {
+    setStartX(e.touches[0].clientX);
+    setStartY(e.touches[0].clientY);
+    setGestureLocked(null);
+  };
+  const handleTouchMove = (e) => {
+    if (startX === null) return;
+    const dx = e.touches[0].clientX - startX;
+    const dy = e.touches[0].clientY - startY;
+    // 首次判断手势方向：横向位移明显大于纵向时才识别为左滑
+    if (gestureLocked === null) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return; // 还没动到阈值
+      if (Math.abs(dy) > Math.abs(dx)) {
+        setGestureLocked('vertical'); // 判定为滚动，此后不再参与滑动删除
+        return;
+      } else {
+        setGestureLocked('horizontal');
+      }
+    }
+    if (gestureLocked !== 'horizontal') return;
+    if (dx < 0) setSwipeX(Math.max(dx, -140));
+    else if (swipeX < 0) setSwipeX(Math.min(0, swipeX + dx * 0.3));
+  };
+  const handleTouchEnd = () => {
+    if (gestureLocked === 'horizontal') {
+      if (swipeX < -60) setSwipeX(-140);
+      else setSwipeX(0);
+    }
+    setStartX(null);
+    setStartY(null);
+    setGestureLocked(null);
+  };
+
+  const handleDelete = () => {
+    if (confirmingDelete) {
+      onDelete();
+      setConfirmingDelete(false);
+      setSwipeX(0);
+    } else {
+      setConfirmingDelete(true);
+      setTimeout(() => setConfirmingDelete(false), 3000);
+    }
+  };
+
+  return (
+    <div
+      style={{ position: "relative", borderTop: isFirst ? "none" : "1px solid var(--line)", overflow: "hidden" }}
+    >
+      {/* Action buttons behind the card */}
+      <div
+        style={{
+          position: "absolute", top: 0, right: 0, bottom: 0,
+          display: "flex", alignItems: "stretch",
+          opacity: swipeX < 0 ? 1 : 0,
+          transition: "opacity 0.2s ease",
+        }}
+      >
+        <button
+          onClick={() => { onEdit(); setSwipeX(0); }}
+          style={{
+            width: 70, border: "none", cursor: "pointer",
+            background: "var(--accent-2)", color: "white",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 4, fontFamily: "var(--font-body)", fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <Pencil size={18} />
+          编辑
+        </button>
+        <button
+          onClick={handleDelete}
+          style={{
+            width: 70, border: "none", cursor: "pointer",
+            background: confirmingDelete ? "#c13b1b" : "var(--accent)",
+            color: "white",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+            gap: 4, fontFamily: "var(--font-body)", fontSize: 12, fontWeight: 600,
+          }}
+        >
+          <Trash2 size={18} />
+          {confirmingDelete ? "确认" : "删除"}
+        </button>
+      </div>
+
+      {/* Actual item content */}
+      <div
+        className="px-4 py-3"
+        style={{
+          background: "var(--bg-card)",
+          transform: `translateX(${swipeX}px)`,
+          transition: startX === null ? "transform 0.25s ease" : "none",
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+      >
+        <div className="flex items-center gap-3">
+          <div className="text-2xl">{item.emoji}</div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold truncate">{item.name}</span>
+              {moodObj && <span style={{ fontSize: 14 }} title={moodObj.label}>{moodObj.emoji}</span>}
+              {item.difficulty > 0 && (
+                <span className="mono text-xs" style={{ color: "var(--accent)" }}>
+                  {"★".repeat(item.difficulty)}
+                </span>
+              )}
+            </div>
+            <div className="text-xs mono" style={{ color: "var(--ink-soft)" }}>
+              {item.type === "cardio" ? (
+                <>
+                  {item.duration} min
+                  {item.calories > 0 && (
+                    <>
+                      <span className="divider-dot"></span>
+                      <Flame size={10} style={{ display: "inline", verticalAlign: "middle", color: "var(--accent)" }} /> {item.calories} kcal
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {item.sets} 组 × {item.reps} 次
+                  <span className="divider-dot"></span>
+                  共 {item.sets * item.reps} 次
+                </>
+              )}
+              {(locObj || legacyCustomLoc) && (
+                <>
+                  <span className="divider-dot"></span>
+                  {locObj ? `${locObj.emoji} ${locObj.label}` : `📍 ${legacyCustomLoc}`}
+                </>
+              )}
+            </div>
+          </div>
+          {/* Desktop actions */}
+          <div className="flex items-center gap-1" style={{ opacity: 0.5 }}>
+            <button
+              onClick={onEdit}
+              style={{ padding: 6, background: "none", border: "none", cursor: "pointer", color: "var(--ink-soft)" }}
+              title="编辑"
+              onMouseEnter={(e) => { e.currentTarget.parentElement.style.opacity = 1; }}
+              onMouseLeave={(e) => { e.currentTarget.parentElement.style.opacity = 0.5; }}
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              onClick={handleDelete}
+              style={{
+                padding: 6, background: confirmingDelete ? "var(--accent)" : "none",
+                border: "none", borderRadius: 6, cursor: "pointer",
+                color: confirmingDelete ? "white" : "var(--ink-soft)",
+              }}
+              title={confirmingDelete ? "再点一次确认" : "删除"}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        </div>
+        {item.note && (
+          <div
+            className="mt-2 ml-11 text-sm"
+            style={{
+              color: "var(--ink-soft)",
+              fontStyle: "italic",
+              borderLeft: "2px solid var(--accent-soft)",
+              paddingLeft: 10,
+              lineHeight: 1.5,
+            }}
+          >
+            {noteIsLong && !noteExpanded
+              ? <>
+                  {item.note.slice(0, NOTE_PREVIEW_LEN)}...
+                  <button
+                    onClick={() => setNoteExpanded(true)}
+                    style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", marginLeft: 4, fontSize: 12, fontStyle: "normal" }}
+                  >
+                    展开
+                  </button>
+                </>
+              : item.note
+            }
+            {noteExpanded && noteIsLong && (
+              <button
+                onClick={() => setNoteExpanded(false)}
+                style={{ background: "none", border: "none", color: "var(--ink-faint)", cursor: "pointer", marginLeft: 4, fontSize: 12, fontStyle: "normal" }}
+              >
+                收起
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ================================
+// Stats View
+// ================================
+function StatsView({ entries, custom }) {
+  const [sortBy, setSortBy] = useState("count"); // count | duration | recent
+
+  const stats = useMemo(() => {
+    const all = entries;
+    const totalSessions = all.length;
+    const totalCalories = all.reduce((s, e) => s + (e.calories || 0), 0);
+    const totalMinutes = all.filter((e) => e.type === "cardio").reduce((s, e) => s + (e.duration || 0), 0);
+    const activeDays = new Set(all.map((e) => e.date)).size;
+
+    // Date range
+    const dates = all.map((e) => e.date).sort();
+    const firstDate = dates[0];
+    const lastDate = dates[dates.length - 1];
+    const spanDays = firstDate ? daysBetween(firstDate, todayStr()) + 1 : 0;
+
+    // Per-exercise breakdown
+    const byName = {};
+    all.forEach((e) => {
+      if (!byName[e.name]) {
+        byName[e.name] = {
+          name: e.name,
+          emoji: e.emoji,
+          type: e.type,
+          count: 0,
+          duration: 0,
+          calories: 0,
+          totalReps: 0,
+          totalSets: 0,
+          lastDate: e.date,
+        };
+      }
+      const item = byName[e.name];
+      item.count++;
+      if (e.type === "cardio") {
+        item.duration += e.duration || 0;
+        item.calories += e.calories || 0;
+      } else {
+        item.totalSets += e.sets || 0;
+        item.totalReps += (e.sets || 0) * (e.reps || 0);
+      }
+      if (e.date > item.lastDate) item.lastDate = e.date;
+    });
+
+    let exerciseList = Object.values(byName);
+    if (sortBy === "count") exerciseList.sort((a, b) => b.count - a.count);
+    else if (sortBy === "duration") exerciseList.sort((a, b) => (b.duration + b.totalReps * 0.1) - (a.duration + a.totalReps * 0.1));
+    else if (sortBy === "recent") exerciseList.sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+
+    // Cardio vs strength split
+    const cardioCount = all.filter((e) => e.type === "cardio").length;
+    const strengthCount = all.filter((e) => e.type === "strength").length;
+
+    // Current streak
+    let streak = 0;
+    const allDates = new Set(all.map((e) => e.date));
+    let checkDate = new Date(todayStr());
+    if (!allDates.has(todayStr())) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+    while (allDates.has(checkDate.toISOString().split("T")[0])) {
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+
+    // Longest streak ever
+    let longestStreak = 0;
+    let tempStreak = 0;
+    const sortedDates = [...allDates].sort();
+    for (let i = 0; i < sortedDates.length; i++) {
+      if (i === 0 || daysBetween(sortedDates[i - 1], sortedDates[i]) === 1) {
+        tempStreak++;
+      } else {
+        tempStreak = 1;
+      }
+      if (tempStreak > longestStreak) longestStreak = tempStreak;
+    }
+
+    // Last 30 days heatmap
+    const heatmap = [];
+    const today = new Date(todayStr());
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      const dStr = d.toISOString().split("T")[0];
+      const dayEntries = all.filter((e) => e.date === dStr);
+      heatmap.push({
+        date: dStr,
+        count: dayEntries.length,
+      });
+    }
+
+    // Mood breakdown
+    const moodCounts = {};
+    all.forEach((e) => {
+      if (e.mood) moodCounts[e.mood] = (moodCounts[e.mood] || 0) + 1;
+    });
+    const moodBreakdown = Object.entries(moodCounts)
+      .map(([key, count]) => ({ ...MOOD_OPTIONS.find((m) => m.key === key), count }))
+      .filter((m) => m.key)
+      .sort((a, b) => b.count - a.count);
+    const totalMoodLogs = moodBreakdown.reduce((s, m) => s + m.count, 0);
+
+    // Location breakdown
+    const allKnownLocs = [...DEFAULT_LOCATION_PRESETS, ...(custom?.locations || [])];
+    const locCounts = {};
+    const locMeta = {}; // key -> { emoji, label }
+    all.forEach((e) => {
+      if (e.location === "custom" && e.customLocation) {
+        // legacy format
+        const k = `custom:${e.customLocation}`;
+        locCounts[k] = (locCounts[k] || 0) + 1;
+        locMeta[k] = { emoji: "📍", label: e.customLocation };
+      } else if (e.location && e.location !== "custom") {
+        locCounts[e.location] = (locCounts[e.location] || 0) + 1;
+        if (!locMeta[e.location]) {
+          const preset = allKnownLocs.find((l) => l.key === e.location);
+          if (preset) {
+            locMeta[e.location] = { emoji: preset.emoji, label: preset.label };
+          } else {
+            locMeta[e.location] = { emoji: "📍", label: "已删除场地" };
+          }
+        }
+      }
+    });
+    const locBreakdown = Object.entries(locCounts)
+      .map(([key, count]) => ({ key, ...locMeta[key], count }))
+      .sort((a, b) => b.count - a.count);
+    const totalLocLogs = locBreakdown.reduce((s, l) => s + l.count, 0);
+
+    // Average difficulty
+    const difficultyEntries = all.filter((e) => e.difficulty > 0);
+    const avgDifficulty = difficultyEntries.length > 0
+      ? (difficultyEntries.reduce((s, e) => s + e.difficulty, 0) / difficultyEntries.length)
+      : 0;
+
+    return {
+      totalSessions,
+      totalCalories,
+      totalMinutes,
+      activeDays,
+      spanDays,
+      firstDate,
+      lastDate,
+      exerciseList,
+      cardioCount,
+      strengthCount,
+      streak,
+      longestStreak,
+      heatmap,
+      moodBreakdown,
+      totalMoodLogs,
+      locBreakdown,
+      totalLocLogs,
+      avgDifficulty,
+      difficultyCount: difficultyEntries.length,
+    };
+  }, [entries, sortBy, custom]);
+
+  if (stats.totalSessions === 0) {
+    return (
+      <div className="animate-in">
+        <div className="card p-10 text-center">
+          <div className="text-4xl mb-3">📊</div>
+          <div className="display text-xl mb-1">还没有数据</div>
+          <div className="text-sm" style={{ color: "var(--ink-soft)" }}>记录几次训练后再回来看统计吧</div>
+        </div>
+      </div>
+    );
+  }
+
+  const maxCount = stats.exerciseList[0]?.count || 1;
+  const cardioPct = stats.totalSessions > 0 ? (stats.cardioCount / stats.totalSessions) * 100 : 0;
+
+  return (
+    <div className="animate-in">
+      {/* Date range subtitle */}
+      <div className="mb-4 px-1">
+        <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+          All time · 全部记录
+        </div>
+        {stats.firstDate && (
+          <div className="text-xs mt-1 mono" style={{ color: "var(--ink-soft)" }}>
+            {stats.firstDate} → {todayStr()} · 共 {stats.spanDays} 天
+          </div>
+        )}
+      </div>
+
+      {/* Hero stats */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <StatCard label="训练次数" value={stats.totalSessions} unit="次" accent />
+        <StatCard label="活跃天数" value={stats.activeDays} unit="天" />
+        <StatCard label="有氧时长" value={stats.totalMinutes} unit="分钟" />
+        <StatCard label="总卡路里" value={stats.totalCalories} unit="kcal" accent />
+      </div>
+
+      {/* Streak cards */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="card p-4" style={{ background: stats.streak > 0 ? "var(--accent-soft)" : "var(--bg-card)", borderColor: stats.streak > 0 ? "var(--accent-soft)" : "var(--line)" }}>
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-lg">🔥</span>
+            <span className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-soft)" }}>当前连续</span>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="display text-3xl font-bold" style={{ color: stats.streak > 0 ? "var(--accent)" : "var(--ink)" }}>{stats.streak}</span>
+            <span className="text-xs" style={{ color: "var(--ink-soft)" }}>天</span>
+          </div>
+        </div>
+        <div className="card p-4">
+          <div className="flex items-center gap-1 mb-1">
+            <span className="text-lg">🏆</span>
+            <span className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>最长记录</span>
+          </div>
+          <div className="flex items-baseline gap-1">
+            <span className="display text-3xl font-bold">{stats.longestStreak}</span>
+            <span className="text-xs" style={{ color: "var(--ink-soft)" }}>天</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Cardio vs strength split */}
+      <div className="card p-5 mb-5">
+        <div className="text-xs uppercase tracking-widest mono mb-3" style={{ color: "var(--ink-faint)" }}>
+          有氧 / 无氧比例
+        </div>
+        <div style={{ height: 10, background: "var(--line)", borderRadius: 5, overflow: "hidden", display: "flex" }}>
+          <div style={{ width: `${cardioPct}%`, background: "var(--accent)", transition: "width 0.4s ease" }} />
+          <div style={{ flex: 1, background: "var(--accent-2)" }} />
+        </div>
+        <div className="flex justify-between mt-2 text-xs">
+          <span className="flex items-center gap-1.5">
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }}></span>
+            <span style={{ color: "var(--ink-soft)" }}>有氧</span>
+            <span className="mono font-semibold">{stats.cardioCount}</span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="mono font-semibold">{stats.strengthCount}</span>
+            <span style={{ color: "var(--ink-soft)" }}>无氧</span>
+            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent-2)" }}></span>
+          </span>
+        </div>
+      </div>
+
+      {/* 30-day heatmap */}
+      <div className="card p-5 mb-5">
+        <div className="mb-3">
+          <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+            Recent 30 days
+          </div>
+          <div className="display text-lg font-semibold">近 30 天活跃度</div>
+        </div>
+        <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(15, 1fr)" }}>
+          {stats.heatmap.map((d, i) => {
+            const intensity = d.count === 0 ? 0 : Math.min(d.count / 3, 1);
+            const bg = d.count === 0 ? "var(--line)" : `rgba(217, 96, 59, ${0.3 + intensity * 0.7})`;
+            return (
+              <div
+                key={i}
+                title={`${d.date}: ${d.count}次`}
+                style={{
+                  aspectRatio: "1",
+                  background: bg,
+                  borderRadius: 3,
+                }}
+              />
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-end gap-1.5 mt-3 text-xs" style={{ color: "var(--ink-faint)" }}>
+          <span>少</span>
+          {[0.3, 0.55, 0.8, 1].map((a) => (
+            <span key={a} style={{ width: 10, height: 10, background: `rgba(217, 96, 59, ${a})`, borderRadius: 2 }}></span>
+          ))}
+          <span>多</span>
+        </div>
+      </div>
+
+      {/* Mood & Difficulty row */}
+      {(stats.totalMoodLogs > 0 || stats.difficultyCount > 0) && (
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {/* Mood */}
+          <div className="card p-4">
+            <div className="text-xs uppercase tracking-widest mono mb-3" style={{ color: "var(--ink-faint)" }}>
+              心情分布
+            </div>
+            {stats.totalMoodLogs > 0 ? (
+              <div className="space-y-2">
+                {stats.moodBreakdown.slice(0, 4).map((m) => {
+                  const pct = (m.count / stats.totalMoodLogs) * 100;
+                  return (
+                    <div key={m.key}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="flex items-center gap-1 text-sm">
+                          <span>{m.emoji}</span>
+                          <span style={{ fontSize: 11, color: "var(--ink-soft)" }}>{m.label}</span>
+                        </span>
+                        <span className="mono text-xs font-semibold">{m.count}</span>
+                      </div>
+                      <div style={{ height: 4, background: "var(--line)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: "var(--accent)", transition: "width 0.4s ease" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>还没有记录心情</div>
+            )}
+          </div>
+
+          {/* Average difficulty */}
+          <div className="card p-4">
+            <div className="text-xs uppercase tracking-widest mono mb-3" style={{ color: "var(--ink-faint)" }}>
+              平均难度
+            </div>
+            {stats.difficultyCount > 0 ? (
+              <>
+                <div className="display text-3xl font-bold mb-1" style={{ color: "var(--accent)" }}>
+                  {stats.avgDifficulty.toFixed(1)}
+                  <span className="text-sm font-normal" style={{ color: "var(--ink-soft)" }}>/5</span>
+                </div>
+                <div style={{ fontSize: 16, letterSpacing: 2 }}>
+                  {Array.from({ length: 5 }, (_, i) => {
+                    const filled = i + 1 <= Math.round(stats.avgDifficulty);
+                    return (
+                      <span key={i} style={{ opacity: filled ? 1 : 0.25 }}>⭐</span>
+                    );
+                  })}
+                </div>
+                <div className="text-xs mt-2 mono" style={{ color: "var(--ink-faint)" }}>
+                  基于 {stats.difficultyCount} 次评分
+                </div>
+              </>
+            ) : (
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>还没有难度评分</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Location breakdown */}
+      {stats.totalLocLogs > 0 && (
+        <div className="card p-5 mb-5">
+          <div className="mb-3">
+            <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+              Where
+            </div>
+            <div className="display text-lg font-semibold">运动场地分布</div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {stats.locBreakdown.map((loc) => {
+              const pct = Math.round((loc.count / stats.totalLocLogs) * 100);
+              return (
+                <div
+                  key={loc.key}
+                  className="flex items-center gap-2 px-3 py-2 rounded-full"
+                  style={{ background: "var(--bg)", border: "1px solid var(--line)" }}
+                >
+                  <span>{loc.emoji}</span>
+                  <span className="text-sm font-medium">{loc.label}</span>
+                  <span className="mono text-xs font-semibold" style={{ color: "var(--accent)" }}>
+                    {loc.count}次
+                  </span>
+                  <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                    {pct}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Per-exercise breakdown — the star of the show */}
+      <div className="card p-5 mb-5">
+        <div className="flex items-baseline justify-between mb-4">
+          <div>
+            <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+              Exercise breakdown
+            </div>
+            <div className="display text-xl font-semibold">每项运动统计</div>
+          </div>
+        </div>
+
+        {/* Sort tabs */}
+        <div className="flex gap-1 mb-4 p-1 rounded-lg" style={{ background: "var(--bg)" }}>
+          {[
+            { key: "count", label: "按次数" },
+            { key: "duration", label: "按时长/次数" },
+            { key: "recent", label: "最近做过" },
+          ].map((opt) => (
+            <button
+              key={opt.key}
+              onClick={() => setSortBy(opt.key)}
+              style={{
+                flex: 1,
+                padding: "6px 8px",
+                fontSize: 12,
+                fontWeight: 600,
+                border: "none",
+                borderRadius: 6,
+                background: sortBy === opt.key ? "var(--bg-card)" : "transparent",
+                color: sortBy === opt.key ? "var(--ink)" : "var(--ink-faint)",
+                cursor: "pointer",
+                fontFamily: "var(--font-body)",
+                transition: "all 0.15s ease",
+                boxShadow: sortBy === opt.key ? "0 1px 2px rgba(0,0,0,0.05)" : "none",
+              }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          {stats.exerciseList.map((ex) => {
+            const pct = (ex.count / maxCount) * 100;
+            return (
+              <div key={ex.name}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{ex.emoji}</span>
+                    <span className="font-semibold text-sm">{ex.name}</span>
+                    <span className="mono text-xs px-1.5 py-0.5 rounded" style={{ background: ex.type === "cardio" ? "var(--accent-soft)" : "var(--accent-2-soft)", color: "var(--ink)" }}>
+                      {ex.type === "cardio" ? "有氧" : "无氧"}
+                    </span>
+                  </div>
+                  <span className="display text-lg font-bold" style={{ color: "var(--ink)" }}>
+                    {ex.count}
+                    <span className="text-xs font-normal ml-0.5" style={{ color: "var(--ink-soft)" }}>次</span>
+                  </span>
+                </div>
+                <div style={{ height: 6, background: "var(--line)", borderRadius: 3, overflow: "hidden", marginBottom: 6 }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${pct}%`,
+                      background: ex.type === "cardio" ? "var(--accent)" : "var(--accent-2)",
+                      transition: "width 0.4s ease",
+                    }}
+                  />
+                </div>
+                <div className="flex items-center flex-wrap gap-x-3 gap-y-0.5 text-xs mono" style={{ color: "var(--ink-soft)" }}>
+                  {ex.type === "cardio" ? (
+                    <>
+                      <span>⏱ 共 {ex.duration} 分钟</span>
+                      {ex.calories > 0 && <span>🔥 {ex.calories} kcal</span>}
+                      {ex.count > 1 && <span>平均 {Math.round(ex.duration / ex.count)} 分钟/次</span>}
+                    </>
+                  ) : (
+                    <>
+                      <span>💪 共 {ex.totalSets} 组 / {ex.totalReps} 次</span>
+                      {ex.count > 1 && <span>平均 {Math.round(ex.totalReps / ex.count)} 次/组</span>}
+                    </>
+                  )}
+                  <span style={{ color: "var(--ink-faint)" }}>上次 {formatDate(ex.lastDate)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, unit, accent }) {
+  return (
+    <div className="card p-4" style={accent ? { background: "var(--ink)", color: "var(--bg)", borderColor: "var(--ink)" } : {}}>
+      <div className="text-xs uppercase tracking-widest mono mb-1" style={{ color: accent ? "rgba(244, 239, 230, 0.6)" : "var(--ink-faint)" }}>
+        {label}
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="display text-3xl font-bold">{value}</span>
+        <span className="text-xs" style={{ color: accent ? "rgba(244, 239, 230, 0.7)" : "var(--ink-soft)" }}>{unit}</span>
+      </div>
+    </div>
+  );
+}
+
+// ================================
+// Edit Entry Modal
+// ================================
+function EditEntryModal({ entry, custom, onAddCustomPreset, onSave, onCancel }) {
+  // Clone into local state
+  const [duration, setDuration] = useState(entry.duration || "");
+  const [calories, setCalories] = useState(entry.calories || "");
+  const [sets, setSets] = useState(entry.sets || "");
+  const [reps, setReps] = useState(entry.reps || "");
+  const [date, setDate] = useState(entry.date);
+  const [extras, setExtras] = useState({
+    mood: entry.mood || null,
+    difficulty: entry.difficulty || 0,
+    location: entry.location || null,
+    customLocation: entry.customLocation || "",
+    note: entry.note || "",
+  });
+
+  const save = () => {
+    const patch = {
+      date,
+      ...extras,
+    };
+    if (entry.type === "cardio") {
+      patch.duration = parseFloat(duration) || 0;
+      patch.calories = parseInt(calories) || 0;
+    } else {
+      patch.sets = parseInt(sets) || 0;
+      patch.reps = parseInt(reps) || 0;
+    }
+    onSave(patch);
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(42, 36, 28, 0.5)",
+        display: "flex", alignItems: "flex-end", justifyContent: "center",
+        animation: "fade-in 0.2s ease-out",
+      }}
+      onClick={onCancel}
+    >
+      <style>{`
+        @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+      `}</style>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--bg)",
+          width: "100%", maxWidth: 448,
+          maxHeight: "90vh", overflowY: "auto",
+          borderRadius: "24px 24px 0 0",
+          padding: 20,
+          animation: "slide-up 0.3s ease-out",
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+              Edit
+            </div>
+            <div className="display text-2xl font-bold flex items-center gap-2">
+              <span>{entry.emoji}</span> {entry.name}
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            style={{
+              background: "var(--bg-card)", border: "1px solid var(--line)",
+              borderRadius: "50%", width: 36, height: 36,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              cursor: "pointer", color: "var(--ink-soft)",
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Type-specific fields */}
+        {entry.type === "cardio" ? (
+          <div className="grid grid-cols-2 gap-5 mb-5">
+            <div>
+              <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+                时长 (分钟)
+              </label>
+              <input className="input mono" type="number" inputMode="decimal" value={duration} onChange={(e) => setDuration(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+                卡路里
+              </label>
+              <input className="input mono" type="number" inputMode="decimal" value={calories} onChange={(e) => setCalories(e.target.value)} />
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-5 mb-5">
+            <div>
+              <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+                组数
+              </label>
+              <input className="input mono" type="number" inputMode="numeric" value={sets} onChange={(e) => setSets(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+                每组次数
+              </label>
+              <input className="input mono" type="number" inputMode="numeric" value={reps} onChange={(e) => setReps(e.target.value)} />
+            </div>
+          </div>
+        )}
+
+        <div className="mb-5">
+          <label className="text-xs uppercase tracking-widest mono block mb-1" style={{ color: "var(--ink-faint)" }}>
+            日期
+          </label>
+          <input className="input mono" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </div>
+
+        <ExtraFields
+          extras={extras}
+          setExtras={setExtras}
+          custom={custom}
+          onAddCustomPreset={onAddCustomPreset}
+        />
+
+        <div className="flex gap-2 pb-2">
+          <button className="btn-ghost" onClick={onCancel} style={{ flex: 1 }}>
+            取消
+          </button>
+          <button className="btn-primary" onClick={save} style={{ flex: 2 }}>
+            <Check size={16} style={{ display: "inline", marginRight: 6, verticalAlign: "-3px" }} />
+            保存修改
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ================================
+// Settings View
+// ================================
+function SettingsView({ custom, onRemoveCustom, onExport, onImport, entryCount }) {
+  const fileInputRef = React.useRef(null);
+
+  return (
+    <div className="animate-in">
+      {/* Data card */}
+      <div className="card p-5 mb-5">
+        <div className="mb-3">
+          <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+            Data
+          </div>
+          <div className="display text-lg font-semibold">我的数据</div>
+        </div>
+        <div className="flex items-center justify-between mb-4 pb-4" style={{ borderBottom: "1px solid var(--line)" }}>
+          <div>
+            <div className="display text-3xl font-bold">{entryCount}</div>
+            <div className="text-xs mono" style={{ color: "var(--ink-soft)" }}>条训练记录</div>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()} style={{ padding: "10px 14px" }}>
+              <Download size={14} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px", transform: "rotate(180deg)" }} />
+              导入
+            </button>
+            <button className="btn-ghost" onClick={onExport} style={{ padding: "10px 14px" }}>
+              <Download size={14} style={{ display: "inline", marginRight: 6, verticalAlign: "-2px" }} />
+              导出
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onImport(file);
+                e.target.value = "";
+              }}
+            />
+          </div>
+        </div>
+        <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+          ☁️ 数据保存在 Supabase 云端，多设备同步。导出 JSON 可作为本地备份，未来也方便迁移。
+        </div>
+      </div>
+
+      {/* Custom cardio */}
+      <CustomListCard
+        title="自定义有氧项目"
+        items={custom.cardio}
+        onRemove={(name) => onRemoveCustom("cardio", name)}
+        matchKey="name"
+        empty={`还没有自定义项目。在「记录」页点 "+新项目" 就能添加，保存后会出现在这里。`}
+      />
+
+      {/* Custom strength */}
+      <CustomListCard
+        title="自定义无氧动作"
+        items={custom.strength}
+        onRemove={(name) => onRemoveCustom("strength", name)}
+        matchKey="name"
+        empty={`还没有自定义动作。在「记录」页点 "+新动作" 就能添加。`}
+      />
+
+      {/* Custom locations */}
+      <CustomListCard
+        title="自定义场地"
+        items={custom.locations}
+        onRemove={(label) => onRemoveCustom("locations", label)}
+        matchKey="label"
+        empty={`还没有自定义场地。在「记录」页场地那里点 "+新场地" 就能添加。`}
+      />
+
+      {/* About */}
+      <div className="card p-5 mb-5">
+        <div className="mb-2">
+          <div className="text-xs uppercase tracking-widest mono" style={{ color: "var(--ink-faint)" }}>
+            About
+          </div>
+          <div className="display text-lg font-semibold">关于</div>
+        </div>
+        <div className="text-sm" style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
+          专注统计性的个人运动记录工具。数据保存在 Supabase 云端，多设备实时同步，建议定期导出备份。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CustomListCard({ title, items, onRemove, matchKey, empty }) {
+  return (
+    <div className="card p-5 mb-5">
+      <div className="flex items-baseline justify-between mb-3">
+        <div className="display text-base font-semibold">{title}</div>
+        <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+          {items.length} 项
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+          {empty}
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {items.map((item) => (
+            <div
+              key={item[matchKey]}
+              className="flex items-center gap-2 pl-3 pr-1 py-1 rounded-full"
+              style={{ background: "var(--bg)", border: "1px solid var(--line)" }}
+            >
+              <span>{item.emoji}</span>
+              <span className="text-sm font-medium">{item[matchKey]}</span>
+              <button
+                onClick={() => {
+                  if (confirm(`移除"${item[matchKey]}"？\n\n已记录的历史数据不会被删除，只是不再出现在快捷按钮里。`)) {
+                    onRemove(item[matchKey]);
+                  }
+                }}
+                style={{
+                  background: "transparent", border: "none", cursor: "pointer",
+                  width: 24, height: 24, borderRadius: "50%",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "var(--ink-faint)",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--accent-soft)"; e.currentTarget.style.color = "var(--accent)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "var(--ink-faint)"; }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+    // Mount the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
