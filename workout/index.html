@@ -280,13 +280,27 @@ function App() {
   const [entries, setEntries] = useState([]);
   const [custom, setCustom] = useState({ cardio: [], strength: [], locations: [] });
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null); // ← 新增：记录加载错误
-  const [tab, setTab] = useState("today"); // today | log | stats | settings
+  const [loadError, setLoadError] = useState(null);
+  const [tab, setTab] = useState("today");
   const [toast, setToast] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
-  const toastTimerRef = useRef(null); // ← 新增：防止 toast 互抢 timer
+  const toastTimerRef = useRef(null);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
+    db.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = db.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
     Promise.all([loadEntries(), loadCustom()])
       .then(([e, c]) => {
         setEntries(e);
@@ -298,7 +312,7 @@ function App() {
         setLoadError(err);
         setLoading(false);
       });
-  }, []);
+  }, [session]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -426,6 +440,9 @@ function App() {
       showToast("导入失败：文件格式错误");
     }
   };
+
+  if (authLoading) return <LoginScreen authLoading={true} />;
+  if (!session) return <LoginScreen />;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--ink)", fontFamily: "var(--font-body)" }}>
@@ -2325,6 +2342,189 @@ function CustomListCard({ title, items, onRemove, matchKey, empty }) {
     </div>
   );
 }
+
+    // ── Login Screen ──
+    function LoginScreen({ authLoading = false }) {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleLogin = async () => {
+        if (!email || !password) return;
+        setLoading(true);
+        setError('');
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) setError('邮箱或密码不正确');
+        setLoading(false);
+      };
+
+      return (
+        <div style={{
+          minHeight: "100vh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "#f4efe6",
+          fontFamily: "'Manrope', system-ui, sans-serif",
+          position: "relative", overflow: "hidden",
+        }}>
+          <style>{`
+            @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+          `}</style>
+
+          {/* 背景装饰 */}
+          <div style={{
+            position: "absolute", top: -100, right: -60,
+            width: 320, height: 320, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(217,96,59,0.12) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }} />
+          <div style={{
+            position: "absolute", bottom: -80, left: -60,
+            width: 260, height: 260, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(90,122,78,0.10) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }} />
+
+          <div style={{ width: "100%", maxWidth: 360, padding: "0 24px", position: "relative" }}>
+
+            {/* Logo 区 */}
+            <div style={{ textAlign: "center", marginBottom: 40 }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: 22,
+                background: "linear-gradient(135deg, #e07050, #d9603b)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto 16px",
+                boxShadow: "0 8px 32px rgba(217,96,59,0.28)",
+                fontSize: 34,
+              }}>
+                🏋️
+              </div>
+              <div style={{
+                fontFamily: "'Fraunces', Georgia, serif",
+                fontSize: 26, fontWeight: 800, color: "#2a241c",
+                letterSpacing: "-0.02em",
+              }}>WXH的运动日志</div>
+              <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 11, color: "#a59a8c", marginTop: 6,
+                letterSpacing: "0.12em", textTransform: "uppercase",
+              }}>
+                {authLoading ? "验证中..." : "Private · Members Only"}
+              </div>
+            </div>
+
+            {!authLoading && (
+              <>
+                {/* 登录卡片 */}
+                <div style={{
+                  background: "rgba(251,247,239,0.9)",
+                  backdropFilter: "blur(12px)",
+                  border: "1px solid rgba(224,214,197,0.8)",
+                  borderRadius: 24,
+                  padding: "32px 28px",
+                  boxShadow: "0 4px 40px rgba(217,96,59,0.08), 0 1px 0 rgba(255,255,255,0.9) inset",
+                }}>
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                      textTransform: "uppercase", color: "#a59a8c",
+                      display: "block", marginBottom: 8,
+                    }}>邮箱</label>
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                      style={{
+                        width: "100%", background: "#f4efe6",
+                        border: "1.5px solid #e0d6c5",
+                        borderRadius: 12, padding: "12px 16px",
+                        fontSize: 15, fontFamily: "'Manrope', system-ui, sans-serif",
+                        color: "#2a241c", outline: "none",
+                        transition: "border-color 0.15s ease",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#d9603b"}
+                      onBlur={e => e.target.style.borderColor = "#e0d6c5"}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                      textTransform: "uppercase", color: "#a59a8c",
+                      display: "block", marginBottom: 8,
+                    }}>密码</label>
+                    <input
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                      style={{
+                        width: "100%", background: "#f4efe6",
+                        border: "1.5px solid #e0d6c5",
+                        borderRadius: 12, padding: "12px 16px",
+                        fontSize: 15, fontFamily: "'Manrope', system-ui, sans-serif",
+                        color: "#2a241c", outline: "none",
+                        transition: "border-color 0.15s ease",
+                      }}
+                      onFocus={e => e.target.style.borderColor = "#d9603b"}
+                      onBlur={e => e.target.style.borderColor = "#e0d6c5"}
+                    />
+                  </div>
+
+                  {error && (
+                    <div style={{
+                      background: "#fee2e2", color: "#b91c1c",
+                      borderRadius: 10, padding: "10px 14px",
+                      fontSize: 13, marginBottom: 16,
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span>⚠️</span> {error}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleLogin}
+                    disabled={loading || !email || !password}
+                    style={{
+                      width: "100%", padding: "14px",
+                      background: loading || !email || !password
+                        ? "#e0d6c5"
+                        : "linear-gradient(135deg, #e07050, #d9603b)",
+                      color: loading || !email || !password ? "#a59a8c" : "white",
+                      border: "none", borderRadius: 14,
+                      fontSize: 15, fontWeight: 600,
+                      cursor: loading || !email || !password ? "not-allowed" : "pointer",
+                      fontFamily: "'Manrope', system-ui, sans-serif",
+                      transition: "all 0.15s ease",
+                      boxShadow: loading || !email || !password
+                        ? "none"
+                        : "0 4px 16px rgba(217,96,59,0.32)",
+                    }}
+                  >
+                    {loading ? "登录中..." : "进入"}
+                  </button>
+                </div>
+
+                {/* 底部提示 */}
+                <div style={{
+                  textAlign: "center", marginTop: 28,
+                  fontSize: 12, color: "#a59a8c", lineHeight: 1.6,
+                  fontFamily: "'Manrope', system-ui, sans-serif",
+                }}>
+                  这是 WXH 的私人运动空间<br/>
+                  <span style={{ color: "#d9603b", fontWeight: 600 }}>如需访问权限请联系 WXH</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
 
     // Mount the app
     const root = ReactDOM.createRoot(document.getElementById('root'));

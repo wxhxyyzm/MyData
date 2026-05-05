@@ -334,17 +334,31 @@
     // ================================================================
     function App() {
       const [projects, setProjects] = useState([]);
-      const [activeProjectId, setActiveProjectId] = useState(null); // null = 主界面
+      const [activeProjectId, setActiveProjectId] = useState(null);
       const [loading, setLoading] = useState(true);
       const [toast, setToast] = useState(null);
       const toastRef = useRef(null);
+      const [session, setSession] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
 
       useEffect(() => {
+        db.auth.getSession().then(({ data: { session } }) => {
+          setSession(session);
+          setAuthLoading(false);
+        });
+        const { data: { subscription } } = db.auth.onAuthStateChange((_event, session) => {
+          setSession(session);
+        });
+        return () => subscription.unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!session) return;
         loadProjects()
           .then(setProjects)
           .catch(e => { console.error(e); showToast("加载失败"); })
           .finally(() => setLoading(false));
-      }, []);
+      }, [session]);
 
       const showToast = (msg) => {
         setToast(msg);
@@ -380,6 +394,8 @@
         }
       };
 
+      if (authLoading) return <LoadingScreen />;
+      if (!session) return <LoginScreen />;
       if (loading) return <LoadingScreen />;
 
       const activeProject = projects.find(p => p.id === activeProjectId);
@@ -399,6 +415,170 @@
               />
             )}
             {toast && <div className="toast">{toast}</div>}
+          </div>
+        </div>
+      );
+    }
+
+    function LoginScreen() {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleLogin = async () => {
+        if (!email || !password) return;
+        setLoading(true);
+        setError('');
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) setError('邮箱或密码不正确');
+        setLoading(false);
+      };
+
+      return (
+        <div style={{
+          minHeight: "100vh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          fontFamily: "var(--font-body)",
+          position: "relative", overflow: "hidden",
+          background: "linear-gradient(145deg, #e8eeff 0%, #f0f4ff 40%, #eaefff 100%)",
+        }}>
+          <GlobalStyles />
+
+          {/* 背景装饰圆 */}
+          <div style={{
+            position: "absolute", top: -120, right: -80,
+            width: 340, height: 340, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(37,99,235,0.10) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }} />
+          <div style={{
+            position: "absolute", bottom: -80, left: -60,
+            width: 280, height: 280, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(79,70,229,0.08) 0%, transparent 70%)",
+            pointerEvents: "none",
+          }} />
+
+          <div style={{ width: "100%", maxWidth: 360, padding: "0 24px", position: "relative" }}>
+
+            {/* Logo 区 */}
+            <div style={{ textAlign: "center", marginBottom: 40 }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: 22,
+                background: "linear-gradient(135deg, #3b82f6, #2563eb)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto 16px",
+                boxShadow: "0 8px 32px rgba(37,99,235,0.25)",
+              }}>
+                <span style={{ fontSize: 34 }}>📖</span>
+              </div>
+              <div className="display" style={{
+                fontSize: 26, fontWeight: 800, color: "var(--ink)", letterSpacing: "-0.02em",
+              }}>WXH的学习日志</div>
+              <div className="mono" style={{
+                fontSize: 11, color: "var(--ink-faint)", marginTop: 6,
+                letterSpacing: "0.12em", textTransform: "uppercase",
+              }}>Private · Members Only</div>
+            </div>
+
+            {/* 登录卡片 */}
+            <div style={{
+              background: "rgba(255,255,255,0.85)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(213,224,247,0.8)",
+              borderRadius: 24,
+              padding: "32px 28px",
+              boxShadow: "0 4px 40px rgba(37,99,235,0.08), 0 1px 0 rgba(255,255,255,0.9) inset",
+            }}>
+              <div className="mb-5">
+                <label className="mono" style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                  textTransform: "uppercase", color: "var(--ink-faint)",
+                  display: "block", marginBottom: 8,
+                }}>邮箱</label>
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                  style={{
+                    width: "100%", background: "var(--bg)",
+                    border: "1.5px solid var(--line)",
+                    borderRadius: 12, padding: "12px 16px",
+                    fontSize: 15, fontFamily: "var(--font-body)",
+                    color: "var(--ink)", outline: "none",
+                    transition: "border-color 0.15s ease",
+                  }}
+                  onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                  onBlur={e => e.target.style.borderColor = "var(--line)"}
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="mono" style={{
+                  fontSize: 10, fontWeight: 700, letterSpacing: "0.12em",
+                  textTransform: "uppercase", color: "var(--ink-faint)",
+                  display: "block", marginBottom: 8,
+                }}>密码</label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                  style={{
+                    width: "100%", background: "var(--bg)",
+                    border: "1.5px solid var(--line)",
+                    borderRadius: 12, padding: "12px 16px",
+                    fontSize: 15, fontFamily: "var(--font-body)",
+                    color: "var(--ink)", outline: "none",
+                    transition: "border-color 0.15s ease",
+                  }}
+                  onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                  onBlur={e => e.target.style.borderColor = "var(--line)"}
+                />
+              </div>
+
+              {error && (
+                <div style={{
+                  background: "#fee2e2", color: "#b91c1c",
+                  borderRadius: 10, padding: "10px 14px",
+                  fontSize: 13, marginBottom: 16,
+                  display: "flex", alignItems: "center", gap: 8,
+                }}>
+                  <span>⚠️</span> {error}
+                </div>
+              )}
+
+              <button
+                onClick={handleLogin}
+                disabled={loading || !email || !password}
+                style={{
+                  width: "100%", padding: "14px",
+                  background: loading || !email || !password
+                    ? "var(--line)"
+                    : "linear-gradient(135deg, #3b82f6, #2563eb)",
+                  color: loading || !email || !password ? "var(--ink-faint)" : "white",
+                  border: "none", borderRadius: 14,
+                  fontSize: 15, fontWeight: 600, cursor: loading || !email || !password ? "not-allowed" : "pointer",
+                  fontFamily: "var(--font-body)",
+                  transition: "all 0.15s ease",
+                  boxShadow: loading || !email || !password ? "none" : "0 4px 16px rgba(37,99,235,0.3)",
+                }}
+              >
+                {loading ? "登录中..." : "进入"}
+              </button>
+            </div>
+
+            {/* 底部提示 */}
+            <div style={{
+              textAlign: "center", marginTop: 28,
+              fontSize: 12, color: "var(--ink-faint)", lineHeight: 1.6,
+            }}>
+              这是 WXH 的私人学习空间<br/>
+              <span style={{ color: "var(--accent)", fontWeight: 600 }}>如需访问权限请联系 WXH</span>
+            </div>
           </div>
         </div>
       );
