@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="theme-color" content="#16a34a" />
+  <title>WXH的健康日志</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.292.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #f0faf0;
+      --bg-card: #f8fcf8;
+      --ink: #0f2b1a;
+      --ink-soft: #3d6b50;
+      --ink-faint: #8aac96;
+      --accent: #16a34a;
+      --accent-soft: #dcfce7;
+      --line: #c6e4cf;
+      --font-body: 'Manrope', system-ui, sans-serif;
+    }
+    body { background: var(--bg); font-family: var(--font-body); }
+    .display { font-family: 'Fraunces', serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      transition: box-shadow 0.15s ease;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      color: white; border: none; border-radius: 14px;
+      padding: 12px 24px; font-size: 14px; font-weight: 600;
+      cursor: pointer; font-family: var(--font-body);
+      box-shadow: 0 4px 16px rgba(22,163,74,0.3);
+      transition: all 0.15s ease;
+    }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-ghost {
+      background: transparent; border: 1.5px solid var(--line);
+      border-radius: 12px; padding: 8px 16px; font-size: 13px;
+      font-weight: 600; cursor: pointer; color: var(--ink);
+      font-family: var(--font-body); transition: all 0.15s ease;
+    }
+    .btn-ghost:active { background: var(--accent-soft); }
+    .tab-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      gap: 2px; padding: 8px 4px; border: none; background: transparent;
+      color: var(--ink-faint); font-size: 10px; font-weight: 600;
+      cursor: pointer; border-radius: 14px; transition: all 0.15s ease;
+      font-family: var(--font-body); position: relative;
+    }
+    .tab-btn.active { color: var(--accent); }
+    .tab-btn.active .tab-dot {
+      width: 4px; height: 4px; border-radius: 50%;
+      background: var(--accent); position: absolute; bottom: 2px;
+    }
+    .animate-in { animation: fadeIn 0.25s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .toast {
+      position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+      background: var(--ink); color: white; padding: 10px 20px;
+      border-radius: 12px; font-size: 13px; font-weight: 600; z-index: 999;
+      animation: toastIn 0.2s ease-out;
+    }
+    @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+    // ── Lucide Icons ──
+    const LucideIcon = ({ name, size=20, strokeWidth=2, style, className }) => {
+      const iconData = lucide.icons[name];
+      if (!iconData) return null;
+      const paths = iconData[2] || [];
+      return (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
+          viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+          style={style} className={className}
+          dangerouslySetInnerHTML={{ __html: paths.join('') }} />
+      );
+    };
+    const ChevronLeft  = (p) => <LucideIcon name="chevron-left" {...p} />;
+    const ChevronRight = (p) => <LucideIcon name="chevron-right" {...p} />;
+    const ChevronDown  = (p) => <LucideIcon name="chevron-down" {...p} />;
+    const Check        = (p) => <LucideIcon name="check" {...p} />;
+    const Plus         = (p) => <LucideIcon name="plus" {...p} />;
+    const X            = (p) => <LucideIcon name="x" {...p} />;
+    const TrendingUp   = (p) => <LucideIcon name="trending-up" {...p} />;
+    const Calendar     = (p) => <LucideIcon name="calendar" {...p} />;
+    const ClipboardList= (p) => <LucideIcon name="clipboard-list" {...p} />;
+    const BarChart3    = (p) => <LucideIcon name="bar-chart-3" {...p} />;
+    const Moon         = (p) => <LucideIcon name="moon" {...p} />;
+    const Sun          = (p) => <LucideIcon name="sun" {...p} />;
+    const Pill         = (p) => <LucideIcon name="pill" {...p} />;
+    const Scale        = (p) => <LucideIcon name="scale" {...p} />;
+    const Flame        = (p) => <LucideIcon name="flame" {...p} />;
+    const Dumbbell     = (p) => <LucideIcon name="dumbbell" {...p} />;
+    const Heart        = (p) => <LucideIcon name="heart" {...p} />;
+    const Pencil       = (p) => <LucideIcon name="pencil" {...p} />;
+    const Trash2       = (p) => <LucideIcon name="trash-2" {...p} />;
+
+    // ── Supabase ──
+    const SUPABASE_URL  = "https://ettxqjdtrbjqoctwmprw.supabase.co";
+    const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV0dHhxamR0cmJqcW9jdHdtcHJ3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY1OTI5NzYsImV4cCI6MjA5MjE2ODk3Nn0.o5JdtIHNIRu2Bthbyckh6PqmsTF09u31wPr12xhBaYI";
+    const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    function genId() { return Date.now() * 1000 + Math.floor(Math.random() * 1000); }
+    function todayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function fmtDate(str) {
+      const d = new Date(str + 'T00:00:00');
+      return `${d.getMonth()+1}月${d.getDate()}日`;
+    }
+    function getWeekday(str) {
+      return ['周日','周一','周二','周三','周四','周五','周六'][new Date(str + 'T00:00:00').getDay()];
+    }
+
+    // ════════════════════════════════════════
+    // 数据库: health_logs 表
+    // 每天一条记录，date 为主键概念（前端保证唯一）
+    // ════════════════════════════════════════
+    // SQL to create table:
+    // CREATE TABLE health_logs (
+    //   id bigint PRIMARY KEY,
+    //   date text NOT NULL,
+    //   data jsonb NOT NULL DEFAULT '{}',
+    //   created_at timestamptz DEFAULT now()
+    // );
+    // CREATE UNIQUE INDEX health_logs_date_idx ON health_logs(date);
+    // CREATE POLICY "allow all" ON health_logs FOR ALL USING (true) WITH CHECK (true);
+    // ALTER TABLE health_logs ENABLE ROW LEVEL SECURITY;
+
+    async function loadAllLogs() {
+      const { data, error } = await db.from("health_logs").select("*").order("date", { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }
+    async function upsertLog(date, logData) {
+      // Check if exists
+      const { data: existing } = await db.from("health_logs")
+        .select("id").eq("date", date).maybeSingle();
+      if (existing) {
+        const { error } = await db.from("health_logs")
+          .update({ data: logData }).eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await db.from("health_logs")
+          .insert({ id: genId(), date, data: logData });
+        if (error) throw error;
+      }
+    }
+    async function deleteLog(date) {
+      const { error } = await db.from("health_logs").delete().eq("date", date);
+      if (error) throw error;
+    }
+
+    // ════════════════════════════════════════
+    // 计划定义 (硬编码)
+    // ════════════════════════════════════════
+    const PHASES = [
+      {
+        id: "p1",
+        title: "第一阶段",
+        subtitle: "35天验证期",
+        emoji: "🔥",
+        color: "#16a34a",
+        colorSoft: "#dcfce7",
+        startDate: "2026-05-06",
+        days: 35,
+        goal: "验证在低变量、无失控放纵餐、力量+有氧都有的情况下，能不能稳定下降",
+        targets: "7日均值体重 ↓1.0–2.5kg · 腰围 ↓1–3cm · 排便不变差 · 月经不变乱",
+        weeklyCalories: "普通日 1300 kcal × 6 + 高热量日 1450 kcal × 1 · 周均 ~1320",
+      },
+    ];
+
+    // 热量颜色判断（饮食严格控制）
+    function getCalorieStatus(actual, target) {
+      if (!actual || isNaN(parseFloat(actual))) return null;
+      const v = parseFloat(actual);
+      if (v > target) return "over";        // 超过目标 -> 红
+      if (v < target * 2 / 3) return "under"; // 低于目标的 1/3 以上（即低于 2/3 目标）-> 黄
+      return "ok";                           // 正常 -> 绿
+    }
+
+    // 生成每日运动安排 (5.6 周三开始)
+    function getExercisePlan(dateStr) {
+      const day = new Date(dateStr + 'T00:00:00').getDay(); // 0=Sun
+      const plans = {
+        0: { type: "恢复", desc: "低强度恢复 · 散步/轻松爬坡 30–50min（坡度4–6 速度4.5）", intensity: "低" },
+        1: { type: "爬坡", desc: "爬坡快走 40–50min · 坡度7–10 速度5.0–5.5 · 心率120–145", intensity: "中" },
+        2: { type: "力量+爬坡", desc: "力量跟练 20–25min + 爬坡快走 25–30min", intensity: "中高" },
+        3: { type: "爬坡", desc: "爬坡快走 40–50min · 坡度7–10 速度5.0–5.5 · 心率120–145", intensity: "中" },
+        4: { type: "力量+爬坡", desc: "力量跟练 20–25min + 爬坡快走 20–25min", intensity: "中高" },
+        5: { type: "爬坡长距离", desc: "爬坡快走 45–55min · 坡度8–10 速度5.0–5.5 · 本周最长爬坡", intensity: "中高" },
+        6: { type: "自选运动", desc: "自选 40–60min · 跳舞/游泳/羽毛球/爬坡都行", intensity: "自定" },
+      };
+      return plans[day];
+    }
+    function getCalorieTarget(dateStr) {
+      const day = new Date(dateStr + 'T00:00:00').getDay();
+      return day === 6 ? 1450 : 1300; // 周六 1450
+    }
+    function isSaturday(dateStr) {
+      return new Date(dateStr + 'T00:00:00').getDay() === 6;
+    }
+
+    // 生成阶段内所有日期
+    function phaseDates(phase) {
+      const dates = [];
+      const start = new Date(phase.startDate + 'T00:00:00');
+      for (let i = 0; i < phase.days; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        dates.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+      }
+      return dates;
+    }
+
+    // 每日10个打卡项
+    const DAILY_ITEMS = [
+      { key: "wakeUp",    label: "起床时间", icon: "sun",       inputType: "time",    placeholder: "09:00" },
+      { key: "weight",    label: "体重",     icon: "scale",     inputType: "number",  placeholder: "kg", unit: "kg" },
+      { key: "vitD",      label: "维生素D",  icon: "pill",      inputType: "check",   placeholder: "" },
+      { key: "iron",      label: "铁剂",     icon: "pill",      inputType: "check",   placeholder: "" },
+      { key: "exercise",  label: "运动",     icon: "dumbbell",  inputType: "exercise", placeholder: "" },
+      { key: "calories",  label: "热量摄入", icon: "flame",     inputType: "number",  placeholder: "kcal", unit: "kcal" },
+      { key: "bowel",     label: "排便",     icon: "heart",     inputType: "select",  options: ["正常","费力","无"] },
+      { key: "hunger",    label: "饥饿感",   icon: "flame",     inputType: "slider",  min: 1, max: 10 },
+      { key: "fatigue",   label: "疲劳感",   icon: "moon",      inputType: "slider",  min: 1, max: 10 },
+      { key: "sleep",     label: "睡觉时间", icon: "moon",      inputType: "time",    placeholder: "01:00" },
+    ];
+
+    // ════════════════════════════════════════
+    // App
+    // ════════════════════════════════════════
+    function App() {
+      const [session, setSession] = useState(null);
+      const [authLoading, setAuthLoading] = useState(true);
+      const [logs, setLogs] = useState([]);
+      const [loading, setLoading] = useState(true);
+      const [loadError, setLoadError] = useState(null);
+      const [activePhase, setActivePhase] = useState(null);
+      const [toast, setToast] = useState('');
+
+      useEffect(() => {
+        db.auth.getSession().then(({ data }) => {
+          setSession(data.session);
+          setAuthLoading(false);
+        });
+        const { data: listener } = db.auth.onAuthStateChange((_e, s) => setSession(s));
+        return () => listener.subscription.unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!session) return;
+        setLoading(true);
+        loadAllLogs()
+          .then(data => { setLogs(data); setLoadError(null); })
+          .catch(e => setLoadError(e))
+          .finally(() => setLoading(false));
+      }, [session]);
+
+      const showToast = (msg) => {
+        setToast(msg);
+        setTimeout(() => setToast(''), 2000);
+      };
+
+      const logMap = useMemo(() => {
+        const m = {};
+        logs.forEach(l => { m[l.date] = l.data; });
+        return m;
+      }, [logs]);
+
+      const handleSaveDay = async (date, data) => {
+        try {
+          await upsertLog(date, data);
+          // 本地更新，不重新拉取（避免每次保存都等待）
+          setLogs(prev => {
+            const idx = prev.findIndex(l => l.date === date);
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = { ...updated[idx], data };
+              return updated;
+            }
+            return [{ id: genId(), date, data, created_at: new Date().toISOString() }, ...prev];
+          });
+          showToast("已保存 ✓");
+        } catch (e) {
+          showToast("保存失败");
+        }
+      };
+
+      if (authLoading) return <LoadingScreen />;
+      if (!session) return <LoginScreen />;
+      if (loading) return <LoadingScreen />;
+      if (loadError) return <ErrorScreen error={loadError} />;
+
+      return (
+        <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--ink)", fontFamily: "var(--font-body)" }}>
+          <div className="max-w-md mx-auto min-h-screen pb-4 relative">
+            {!activePhase ? (
+              <HomePage phases={PHASES} logMap={logMap} onSelectPhase={setActivePhase} />
+            ) : (
+              <PhasePage
+                phase={activePhase}
+                logMap={logMap}
+                onBack={() => setActivePhase(null)}
+                onSaveDay={handleSaveDay}
+                showToast={showToast}
+              />
+            )}
+            {toast && <div className="toast">{toast}</div>}
+          </div>
+        </div>
+      );
+    }
+
+    // ── Loading / Error ──
+    function LoadingScreen() {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)" }}>
+          <div className="mono text-sm" style={{ color: "var(--ink-faint)" }}>loading...</div>
+        </div>
+      );
+    }
+    function ErrorScreen({ error }) {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg)", padding: 20 }}>
+          <div className="card p-8 text-center animate-in">
+            <div className="text-4xl mb-3">⚠️</div>
+            <div className="display text-lg font-semibold mb-2">无法连接</div>
+            <div className="text-sm mb-4" style={{ color: "var(--ink-soft)" }}>
+              {String(error?.message || error)}
+            </div>
+            <button className="btn-primary" onClick={() => window.location.reload()}>重新加载</button>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Login ──
+    function LoginScreen() {
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleLogin = async () => {
+        if (!email || !password) return;
+        setLoading(true); setError('');
+        const { error } = await db.auth.signInWithPassword({ email, password });
+        if (error) setError('邮箱或密码不正确');
+        setLoading(false);
+      };
+
+      return (
+        <div style={{
+          minHeight: "100vh", display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          background: "linear-gradient(145deg, #e8ffed 0%, #f0faf0 40%, #eafff0 100%)",
+          fontFamily: "var(--font-body)", position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", top: -120, right: -80,
+            width: 340, height: 340, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(22,163,74,0.1) 0%, transparent 70%)",
+          }} />
+          <div style={{
+            position: "absolute", bottom: -100, left: -60,
+            width: 280, height: 280, borderRadius: "50%",
+            background: "radial-gradient(circle, rgba(34,197,94,0.08) 0%, transparent 70%)",
+          }} />
+
+          <div style={{ position: "relative", width: "100%", maxWidth: 360, padding: "0 24px" }}>
+            <div style={{ textAlign: "center", marginBottom: 36 }}>
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🌿</div>
+              <h1 className="display" style={{ fontSize: 28, fontWeight: 800, color: "var(--ink)", margin: 0 }}>
+                WXH的健康日志
+              </h1>
+              <p style={{ fontSize: 13, color: "var(--ink-faint)", marginTop: 8 }}>
+                记录 · 坚持 · 看见变化
+              </p>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 8 }}>邮箱</label>
+              <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)}
+                style={{ width: "100%", background: "var(--bg-card)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px 16px", fontSize: 15, fontFamily: "var(--font-body)", color: "var(--ink)", outline: "none" }}
+                onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                onBlur={e => e.target.style.borderColor = "var(--line)"}
+              />
+            </div>
+            <div style={{ marginBottom: 24 }}>
+              <label className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-faint)", display: "block", marginBottom: 8 }}>密码</label>
+              <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                style={{ width: "100%", background: "var(--bg-card)", border: "1.5px solid var(--line)", borderRadius: 12, padding: "12px 16px", fontSize: 15, fontFamily: "var(--font-body)", color: "var(--ink)", outline: "none" }}
+                onFocus={e => e.target.style.borderColor = "var(--accent)"}
+                onBlur={e => e.target.style.borderColor = "var(--line)"}
+              />
+            </div>
+
+            {error && (
+              <div style={{ background: "#fee2e2", color: "#b91c1c", borderRadius: 10, padding: "10px 14px", fontSize: 13, marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                <span>⚠️</span> {error}
+              </div>
+            )}
+
+            <button onClick={handleLogin} disabled={loading || !email || !password}
+              style={{
+                width: "100%", padding: "14px",
+                background: loading || !email || !password ? "var(--line)" : "linear-gradient(135deg, #22c55e, #16a34a)",
+                color: loading || !email || !password ? "var(--ink-faint)" : "white",
+                border: "none", borderRadius: 14, fontSize: 15, fontWeight: 600,
+                cursor: loading || !email || !password ? "not-allowed" : "pointer",
+                fontFamily: "var(--font-body)",
+                boxShadow: loading || !email || !password ? "none" : "0 4px 16px rgba(22,163,74,0.3)",
+              }}>
+              {loading ? "登录中..." : "进入"}
+            </button>
+
+            <div style={{ textAlign: "center", marginTop: 28, fontSize: 12, color: "var(--ink-faint)", lineHeight: 1.6 }}>
+              这是 WXH 的私人健康空间<br/>
+              <span style={{ color: "var(--accent)", fontWeight: 600 }}>如需访问权限请联系 WXH</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ════════════════════════════════════════
+    // 主页 - 阶段列表
+    // ════════════════════════════════════════
+    function HomePage({ phases, logMap, onSelectPhase }) {
+      return (
+        <div className="animate-in">
+          <header style={{ padding: "48px 20px 20px", textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>🌿</div>
+            <h1 className="display" style={{ fontSize: 26, fontWeight: 800, margin: 0, lineHeight: 1.3 }}>
+              WXH的健康日志
+            </h1>
+            <p style={{ fontSize: 13, color: "var(--ink-faint)", marginTop: 6 }}>减脂之路，用数据说话</p>
+          </header>
+
+          <div style={{ padding: "0 20px" }}>
+            {phases.map(phase => {
+              const dates = phaseDates(phase);
+              const filledDays = dates.filter(d => logMap[d]).length;
+              const today = todayStr();
+              const started = today >= phase.startDate;
+              const endDate = dates[dates.length - 1];
+              const ended = today > endDate;
+              const pct = Math.round(filledDays / phase.days * 100);
+
+              return (
+                <button key={phase.id} onClick={() => onSelectPhase(phase)}
+                  className="card mb-4" style={{ width: "100%", padding: 20, textAlign: "left", cursor: "pointer" }}>
+                  <div className="flex items-start gap-3 mb-3">
+                    <div style={{
+                      width: 52, height: 52, borderRadius: 14,
+                      background: phase.colorSoft,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 26, flexShrink: 0,
+                    }}>{phase.emoji}</div>
+                    <div style={{ flex: 1 }}>
+                      <div className="font-semibold text-base" style={{ color: "var(--ink)" }}>{phase.title}</div>
+                      <div className="text-xs mt-0.5" style={{ color: "var(--ink-faint)" }}>{phase.subtitle}</div>
+                      <div className="text-xs mt-1" style={{ color: "var(--ink-soft)", lineHeight: 1.5 }}>{phase.goal}</div>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div style={{ marginTop: 8 }}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                        {fmtDate(phase.startDate)} – {fmtDate(endDate)}
+                      </span>
+                      <span className="mono text-xs font-bold" style={{ color: phase.color }}>
+                        {filledDays}/{phase.days} 天
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: "var(--line)", borderRadius: 3, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pct}%`, background: `linear-gradient(90deg, #22c55e, ${phase.color})`, borderRadius: 3, transition: "width 0.3s ease" }} />
+                    </div>
+                  </div>
+
+                  {ended && pct === 100 && (
+                    <div className="mono text-xs mt-2 text-center" style={{ color: "#eab308" }}>🏆 已完成！</div>
+                  )}
+                </button>
+              );
+            })}
+
+            {/* 收藏动作区域 placeholder */}
+            <div className="card p-4 mt-2" style={{ borderStyle: "dashed", textAlign: "center" }}>
+              <div className="text-xs" style={{ color: "var(--ink-faint)", lineHeight: 1.6 }}>
+                🎬 常用跟练视频和动作会在这里<br/>（下个版本更新）
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ════════════════════════════════════════
+    // 阶段详情页 - 三个 Tab
+    // ════════════════════════════════════════
+    function PhasePage({ phase, logMap, onBack, onSaveDay, showToast }) {
+      const [tab, setTab] = useState("overview");
+      const [selectedDate, setSelectedDate] = useState(null);
+      const dates = useMemo(() => phaseDates(phase), [phase]);
+
+      return (
+        <div>
+          {/* Header */}
+          <header style={{ padding: "16px 20px 0", display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={onBack} style={{
+              display: "flex", alignItems: "center", gap: 4,
+              background: "var(--bg-card)", border: "1px solid var(--line)",
+              borderRadius: 12, padding: "8px 12px",
+              cursor: "pointer", color: "var(--ink-soft)",
+              fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)",
+            }}>
+              <ChevronLeft size={16} />
+              返回
+            </button>
+            <div style={{ flex: 1, textAlign: "right" }}>
+              <div className="display font-bold text-base">{phase.emoji} {phase.title}</div>
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{phase.subtitle}</div>
+            </div>
+          </header>
+
+          {/* Tab content */}
+          <main style={{ padding: "12px 0 120px" }}>
+            {tab === "overview" && (
+              <OverviewTab phase={phase} dates={dates} logMap={logMap} />
+            )}
+            {tab === "checkin" && (
+              <CheckinTab
+                phase={phase} dates={dates} logMap={logMap}
+                selectedDate={selectedDate} setSelectedDate={setSelectedDate}
+                onSaveDay={onSaveDay} showToast={showToast}
+              />
+            )}
+            {tab === "stats" && (
+              <StatsTab phase={phase} dates={dates} logMap={logMap} />
+            )}
+          </main>
+
+          {/* Bottom tabs */}
+          <nav style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50 }}>
+            <div className="max-w-md mx-auto px-5 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--bg) 70%, transparent)" }}>
+              <div className="flex items-center rounded-2xl p-1" style={{ background: "var(--bg-card)", border: "1px solid var(--line)" }}>
+                <button className={`tab-btn ${tab === "overview" ? "active" : ""}`} onClick={() => setTab("overview")}>
+                  <ClipboardList size={20} />
+                  <span>计划总览</span>
+                  <span className="tab-dot"></span>
+                </button>
+                <button className={`tab-btn ${tab === "checkin" ? "active" : ""}`} onClick={() => setTab("checkin")}>
+                  <Calendar size={20} />
+                  <span>每日打卡</span>
+                  <span className="tab-dot"></span>
+                </button>
+                <button className={`tab-btn ${tab === "stats" ? "active" : ""}`} onClick={() => setTab("stats")}>
+                  <BarChart3 size={20} />
+                  <span>统计</span>
+                  <span className="tab-dot"></span>
+                </button>
+              </div>
+            </div>
+          </nav>
+        </div>
+      );
+    }
+
+    // ── Tab 1: 计划总览 ──
+    function OverviewTab({ phase, dates, logMap }) {
+      // Group dates into weeks of 7 days each (since startDate is Wed, week 1 = Wed-Tue etc.)
+      // 35天 = 5个完整的7天周
+      const weeks = [];
+      for (let i = 0; i < dates.length; i += 7) {
+        weeks.push(dates.slice(i, i + 7));
+      }
+
+      return (
+        <div className="px-5 animate-in">
+          {/* Targets card */}
+          <div className="card p-4 mb-3 mt-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>目标</div>
+            <div className="text-sm" style={{ color: "var(--ink-soft)", lineHeight: 1.7 }}>{phase.targets}</div>
+          </div>
+          <div className="card p-4 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>热量安排</div>
+            <div className="text-sm" style={{ color: "var(--ink-soft)", lineHeight: 1.7 }}>{phase.weeklyCalories}</div>
+            <div className="mt-2 pt-2 text-xs" style={{ borderTop: "1px dashed var(--line)", color: "var(--ink-faint)" }}>
+              ⚠️ 饮食严格控制 · 运动建议为主，不必死磕
+            </div>
+          </div>
+
+          {/* Color legend */}
+          <div className="card p-3 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>格子颜色说明</div>
+            <div className="flex flex-wrap gap-3 text-xs" style={{ color: "var(--ink-soft)" }}>
+              <span className="flex items-center gap-1.5">
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: "#16a34a", display: "inline-block" }}></span>
+                热量正常
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: "#ef4444", display: "inline-block" }}></span>
+                超过目标
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: "#eab308", display: "inline-block" }}></span>
+                过低（&lt;2/3）
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span style={{ width: 12, height: 12, borderRadius: 3, background: "var(--bg)", border: "1px solid var(--line)", display: "inline-block" }}></span>
+                未打卡
+              </span>
+            </div>
+          </div>
+
+          {/* Calendar grid by week - 5 weeks */}
+          {weeks.map((week, wi) => {
+            const filled = week.filter(d => logMap[d]).length;
+            // 这周热量统计
+            const calStatuses = week.map(d => {
+              const log = logMap[d];
+              if (!log?.calories) return null;
+              return getCalorieStatus(log.calories, getCalorieTarget(d));
+            });
+            const overCount = calStatuses.filter(s => s === "over").length;
+            const underCount = calStatuses.filter(s => s === "under").length;
+
+            return (
+              <div key={wi} className="card p-4 mb-3">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-semibold text-sm">第 {wi + 1} 周</span>
+                  <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                    {fmtDate(week[0])}–{fmtDate(week[week.length-1])} · {filled}/{week.length}天
+                  </span>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  {week.map(d => {
+                    const log = logMap[d];
+                    const hasLog = !!log;
+                    const isToday = d === todayStr();
+                    const isPast = d < todayStr();
+                    const calStatus = log?.calories ? getCalorieStatus(log.calories, getCalorieTarget(d)) : null;
+
+                    // 优先按热量状态上色
+                    let bg, color, border;
+                    if (calStatus === "over") {
+                      bg = "#ef4444"; color = "white"; border = "1px solid #ef4444";
+                    } else if (calStatus === "under") {
+                      bg = "#eab308"; color = "white"; border = "1px solid #eab308";
+                    } else if (calStatus === "ok") {
+                      bg = "var(--accent)"; color = "white"; border = "1px solid var(--accent)";
+                    } else if (hasLog) {
+                      // 打卡了但没填热量
+                      bg = "var(--accent-soft)"; color = "var(--accent)"; border = "1px solid var(--accent)";
+                    } else if (isToday) {
+                      bg = "var(--accent-soft)"; color = "var(--accent)"; border = "2px solid var(--accent)";
+                    } else {
+                      bg = "var(--bg)";
+                      color = isPast ? "var(--ink-faint)" : "var(--ink-soft)";
+                      border = "1px solid var(--line)";
+                    }
+
+                    return (
+                      <div key={d} title={log?.calories ? `热量 ${log.calories} / 目标 ${getCalorieTarget(d)}` : "未打卡"} style={{
+                        width: 40, height: 40, borderRadius: 10,
+                        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                        fontSize: 11, fontWeight: 600,
+                        background: bg, color: color, border: border,
+                      }}>
+                        <span style={{ fontSize: 9, opacity: 0.85 }}>{getWeekday(d).slice(1)}</span>
+                        <span>{new Date(d + 'T00:00:00').getDate()}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {(overCount > 0 || underCount > 0) && (
+                  <div className="mt-2 text-xs" style={{ color: "var(--ink-faint)" }}>
+                    {overCount > 0 && <span style={{ color: "#ef4444", marginRight: 12 }}>⚠️ 超标 {overCount} 天</span>}
+                    {underCount > 0 && <span style={{ color: "#eab308" }}>⚠️ 过低 {underCount} 天</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Exercise reference */}
+          <div className="card p-4 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>每周运动建议</div>
+            <div className="text-xs mb-2" style={{ color: "var(--ink-faint)" }}>仅供参考，不必严格执行</div>
+            <div className="text-xs" style={{ color: "var(--ink-soft)", lineHeight: 2 }}>
+              <div><b>周一</b> 爬坡快走 40–50min</div>
+              <div><b>周二</b> 力量 20–25min + 爬坡 25–30min</div>
+              <div><b>周三</b> 爬坡快走 40–50min</div>
+              <div><b>周四</b> 力量 20–25min + 爬坡 20–25min</div>
+              <div><b>周五</b> 爬坡长距离 45–55min</div>
+              <div><b>周六</b> 自选运动 40–60min 🎉</div>
+              <div><b>周日</b> 低强度恢复 散步/轻爬坡</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Tab 2: 每日打卡 ──
+    function CheckinTab({ phase, dates, logMap, selectedDate, setSelectedDate, onSaveDay, showToast }) {
+      const today = todayStr();
+      // Default to today if in range, else last date
+      const effectiveDate = selectedDate || (dates.includes(today) ? today : dates[dates.length - 1]);
+      const currentLog = logMap[effectiveDate] || {};
+      const [formData, setFormData] = useState({});
+      const [dirty, setDirty] = useState(false);
+
+      useEffect(() => {
+        setFormData(logMap[effectiveDate] || {});
+        setDirty(false);
+      }, [effectiveDate, logMap]);
+
+      const updateField = (key, val) => {
+        setFormData(prev => ({ ...prev, [key]: val }));
+        setDirty(true);
+      };
+
+      const handleSave = async () => {
+        await onSaveDay(effectiveDate, formData);
+        setDirty(false);
+      };
+
+      const plan = getExercisePlan(effectiveDate);
+      const calTarget = getCalorieTarget(effectiveDate);
+      const isSat = isSaturday(effectiveDate);
+
+      // Navigate dates
+      const dateIdx = dates.indexOf(effectiveDate);
+      const prevDate = dateIdx > 0 ? dates[dateIdx - 1] : null;
+      const nextDate = dateIdx < dates.length - 1 ? dates[dateIdx + 1] : null;
+
+      return (
+        <div className="px-5 animate-in">
+          {/* Date navigator */}
+          <div className="flex items-center justify-between mb-2 mt-3">
+            <button onClick={() => prevDate && setSelectedDate(prevDate)} disabled={!prevDate}
+              style={{ background: "var(--bg-card)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", cursor: prevDate ? "pointer" : "default", color: prevDate ? "var(--ink)" : "var(--ink-faint)", opacity: prevDate ? 1 : 0.4 }}>
+              <ChevronLeft size={18} />
+            </button>
+            <div className="text-center">
+              <div className="display font-bold text-lg flex items-center gap-2 justify-center">
+                {fmtDate(effectiveDate)} {getWeekday(effectiveDate)}
+                {logMap[effectiveDate] && <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--accent)" }}></span>}
+              </div>
+              <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>
+                Day {dateIdx + 1}/{phase.days}
+                {effectiveDate === today && <span style={{ color: "var(--accent)", marginLeft: 8 }}>· 今天</span>}
+              </div>
+            </div>
+            <button onClick={() => nextDate && setSelectedDate(nextDate)} disabled={!nextDate}
+              style={{ background: "var(--bg-card)", border: "1px solid var(--line)", borderRadius: 10, padding: "8px 10px", cursor: nextDate ? "pointer" : "default", color: nextDate ? "var(--ink)" : "var(--ink-faint)", opacity: nextDate ? 1 : 0.4 }}>
+              <ChevronRight size={18} />
+            </button>
+          </div>
+
+          {/* Jump to today */}
+          {effectiveDate !== today && dates.includes(today) && (
+            <div className="text-center mb-4">
+              <button onClick={() => setSelectedDate(today)} className="btn-ghost" style={{ fontSize: 12, padding: "5px 12px" }}>
+                ↩ 回到今天
+              </button>
+            </div>
+          )}
+          {effectiveDate === today && <div className="mb-4" />}
+
+          {/* Exercise plan for today */}
+          <div className="card p-3 mb-4" style={{ background: "var(--accent-soft)", border: `1.5px solid ${phase.color}30` }}>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold" style={{ color: phase.color }}>📋 今日建议</span>
+              <span className="mono text-xs px-2 py-0.5 rounded-full" style={{ background: phase.color + "20", color: phase.color }}>{plan.type}</span>
+              {isSat && <span className="text-xs">🎉</span>}
+            </div>
+            <div className="text-xs" style={{ color: "var(--ink-soft)", lineHeight: 1.6 }}>
+              <span style={{ color: "var(--ink-faint)" }}>运动（参考）：</span>{plan.desc}
+            </div>
+            <div className="text-xs mt-1" style={{ color: phase.color, fontWeight: 600 }}>
+              🎯 热量目标（严格）: {calTarget} kcal {isSat ? "（计划内好吃日）" : ""}
+            </div>
+          </div>
+
+          {/* 10 check-in items */}
+          <div className="space-y-3 mb-4">
+            {DAILY_ITEMS.map(item => (
+              <DailyItemCard key={item.key} item={item} value={formData[item.key]} onChange={val => updateField(item.key, val)} plan={plan} calTarget={calTarget} />
+            ))}
+
+            {/* Notes field */}
+            <div className="card p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <Pencil size={14} style={{ color: "var(--ink-faint)" }} />
+                <span className="text-xs font-semibold">备注</span>
+                <span className="text-xs" style={{ color: "var(--ink-faint)" }}>水肿/嘴馋/头晕/怕冷/月经</span>
+              </div>
+              <textarea value={formData.notes || ""} onChange={e => updateField("notes", e.target.value)}
+                placeholder="今天有什么特殊情况..."
+                style={{
+                  width: "100%", background: "var(--bg)", border: "1px solid var(--line)",
+                  borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "var(--font-body)",
+                  color: "var(--ink)", outline: "none", resize: "vertical", minHeight: 60,
+                }} />
+            </div>
+          </div>
+
+          {/* Save button */}
+          <button onClick={handleSave} disabled={!dirty} className="btn-primary"
+            style={{ width: "100%", marginBottom: 16, opacity: dirty ? 1 : 0.5, cursor: dirty ? "pointer" : "default" }}>
+            {dirty ? "保存这一天" : (logMap[effectiveDate] ? "已保存 ✓" : "暂无记录")}
+          </button>
+        </div>
+      );
+    }
+
+    // ── Single daily item card ──
+    function DailyItemCard({ item, value, onChange, plan, calTarget }) {
+      const iconMap = {
+        sun: Sun, scale: Scale, pill: Pill, dumbbell: Dumbbell,
+        flame: Flame, heart: Heart, moon: Moon,
+      };
+      const Icon = iconMap[item.icon] || Heart;
+
+      return (
+        <div className="card p-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Icon size={14} style={{ color: "var(--accent)" }} />
+            <span className="text-sm font-semibold">{item.label}</span>
+          </div>
+
+          {item.inputType === "time" && (
+            <input type="time" value={value || ""} onChange={e => onChange(e.target.value)}
+              style={{
+                width: "100%", background: "var(--bg)", border: "1px solid var(--line)",
+                borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+                color: "var(--ink)", outline: "none",
+              }} />
+          )}
+
+          {item.inputType === "number" && (() => {
+            // 热量字段加实时颜色反馈
+            const isCal = item.key === "calories";
+            const status = isCal ? getCalorieStatus(value, calTarget) : null;
+            const borderColor = status === "over" ? "#ef4444"
+              : status === "under" ? "#eab308"
+              : status === "ok" ? "var(--accent)"
+              : "var(--line)";
+            const statusMsg = status === "over" ? `超出目标 ${(parseFloat(value) - calTarget).toFixed(0)} kcal`
+              : status === "under" ? `低于目标 ${(calTarget - parseFloat(value)).toFixed(0)} kcal`
+              : status === "ok" ? `目标 ${calTarget} kcal · 在范围内 ✓`
+              : isCal ? `今日目标 ${calTarget} kcal` : null;
+            const msgColor = status === "over" ? "#ef4444"
+              : status === "under" ? "#eab308"
+              : status === "ok" ? "var(--accent)"
+              : "var(--ink-faint)";
+            return (
+              <div>
+                <div className="flex items-center gap-2">
+                  <input type="number" step="0.1" value={value || ""} onChange={e => onChange(e.target.value)}
+                    placeholder={item.placeholder}
+                    style={{
+                      flex: 1, background: "var(--bg)",
+                      border: `${isCal && status ? "2px" : "1px"} solid ${borderColor}`,
+                      borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+                      color: "var(--ink)", outline: "none",
+                    }} />
+                  {item.unit && <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{item.unit}</span>}
+                </div>
+                {statusMsg && (
+                  <div className="mono text-xs mt-1.5" style={{ color: msgColor }}>{statusMsg}</div>
+                )}
+              </div>
+            );
+          })()}
+
+          {item.inputType === "check" && (
+            <button onClick={() => onChange(!value)}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "10px 16px", borderRadius: 10, border: "1px solid var(--line)",
+                background: value ? "var(--accent)" : "var(--bg)",
+                color: value ? "white" : "var(--ink-soft)",
+                cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)",
+                width: "100%", transition: "all 0.15s ease",
+              }}>
+              {value ? <Check size={16} /> : <div style={{ width: 16, height: 16, borderRadius: 4, border: "2px solid var(--line)" }} />}
+              {value ? "已服用 ✓" : "未服用"}
+            </button>
+          )}
+
+          {item.inputType === "select" && (
+            <div className="flex gap-2">
+              {item.options.map(opt => (
+                <button key={opt} onClick={() => onChange(opt)}
+                  style={{
+                    flex: 1, padding: "10px 8px", borderRadius: 10,
+                    border: value === opt ? `2px solid var(--accent)` : "1px solid var(--line)",
+                    background: value === opt ? "var(--accent-soft)" : "var(--bg)",
+                    color: value === opt ? "var(--accent)" : "var(--ink-soft)",
+                    cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "var(--font-body)",
+                  }}>{opt}</button>
+              ))}
+            </div>
+          )}
+
+          {item.inputType === "slider" && (
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{item.min}</span>
+                <span className="mono text-lg font-bold" style={{ color: value > 7 ? "#ef4444" : value > 4 ? "#eab308" : "var(--accent)" }}>
+                  {value || "–"}
+                </span>
+                <span className="mono text-xs" style={{ color: "var(--ink-faint)" }}>{item.max}</span>
+              </div>
+              <input type="range" min={item.min} max={item.max} value={value || 5}
+                onChange={e => onChange(parseInt(e.target.value))}
+                style={{ width: "100%", accentColor: "var(--accent)" }} />
+            </div>
+          )}
+
+          {item.inputType === "exercise" && (
+            <div className="space-y-2">
+              <div className="text-xs mb-1" style={{ color: "var(--ink-faint)" }}>
+                建议: {plan.desc}
+              </div>
+              <input type="text" value={value?.type || ""} onChange={e => onChange({ ...value, type: e.target.value })}
+                placeholder="实际运动类型，如：爬坡快走"
+                style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "var(--font-body)", color: "var(--ink)", outline: "none" }} />
+              <div className="flex gap-2">
+                <div style={{ flex: 1 }}>
+                  <input type="number" value={value?.duration || ""} onChange={e => onChange({ ...value, duration: e.target.value })}
+                    placeholder="时长(min)"
+                    style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--ink)", outline: "none" }} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input type="number" value={value?.calories || ""} onChange={e => onChange({ ...value, calories: e.target.value })}
+                    placeholder="消耗(kcal)"
+                    style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--ink)", outline: "none" }} />
+                </div>
+              </div>
+              <input type="number" value={value?.heartRate || ""} onChange={e => onChange({ ...value, heartRate: e.target.value })}
+                placeholder="平均心率(bpm)"
+                style={{ width: "100%", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 12px", fontSize: 13, fontFamily: "'JetBrains Mono', monospace", color: "var(--ink)", outline: "none" }} />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── Tab 3: 统计 ──
+    function StatsTab({ phase, dates, logMap }) {
+      const filledDates = dates.filter(d => logMap[d]);
+      const filledLogs = filledDates.map(d => ({ date: d, ...logMap[d] }));
+
+      // Weight trend
+      const weightEntries = filledLogs.filter(l => l.weight).map(l => ({ date: l.date, val: parseFloat(l.weight) })).filter(l => !isNaN(l.val));
+      const firstWeight = weightEntries.length > 0 ? weightEntries[weightEntries.length - 1].val : null;
+      const lastWeight = weightEntries.length > 0 ? weightEntries[0].val : null;
+      const weightChange = firstWeight && lastWeight ? (lastWeight - firstWeight).toFixed(1) : null;
+
+      // 7-day average weight
+      const last7w = weightEntries.slice(0, 7);
+      const avg7w = last7w.length > 0 ? (last7w.reduce((s, e) => s + e.val, 0) / last7w.length).toFixed(1) : null;
+
+      // Calorie stats
+      const calEntries = filledLogs.filter(l => l.calories).map(l => parseFloat(l.calories)).filter(v => !isNaN(v));
+      const avgCal = calEntries.length > 0 ? Math.round(calEntries.reduce((s, v) => s + v, 0) / calEntries.length) : null;
+
+      // Exercise stats
+      const exEntries = filledLogs.filter(l => l.exercise?.calories).map(l => parseFloat(l.exercise.calories)).filter(v => !isNaN(v));
+      const avgExCal = exEntries.length > 0 ? Math.round(exEntries.reduce((s, v) => s + v, 0) / exEntries.length) : null;
+      const totalExMin = filledLogs.filter(l => l.exercise?.duration).reduce((s, l) => s + (parseFloat(l.exercise.duration) || 0), 0);
+
+      // VD & Iron adherence
+      const vitDCount = filledLogs.filter(l => l.vitD).length;
+      const ironCount = filledLogs.filter(l => l.iron).length;
+
+      // Bowel stats
+      const bowelNormal = filledLogs.filter(l => l.bowel === "正常").length;
+      const bowelHard = filledLogs.filter(l => l.bowel === "费力").length;
+      const bowelNone = filledLogs.filter(l => l.bowel === "无").length;
+
+      // Avg hunger/fatigue
+      const hungerVals = filledLogs.filter(l => l.hunger).map(l => l.hunger);
+      const fatigueVals = filledLogs.filter(l => l.fatigue).map(l => l.fatigue);
+      const avgHunger = hungerVals.length ? (hungerVals.reduce((a,b)=>a+b,0)/hungerVals.length).toFixed(1) : "–";
+      const avgFatigue = fatigueVals.length ? (fatigueVals.reduce((a,b)=>a+b,0)/fatigueVals.length).toFixed(1) : "–";
+
+      if (filledDates.length === 0) {
+        return (
+          <div className="px-5 py-20 text-center animate-in">
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📊</div>
+            <div className="display text-lg font-semibold mb-2">还没有数据</div>
+            <div className="text-sm" style={{ color: "var(--ink-soft)" }}>去「每日打卡」记录几天再来看统计</div>
+          </div>
+        );
+      }
+
+      return (
+        <div className="px-5 animate-in">
+          <div className="text-center mt-3 mb-4">
+            <div className="mono text-xs" style={{ color: "var(--ink-faint)" }}>已记录 {filledDates.length} 天</div>
+          </div>
+
+          {/* Weight card */}
+          <div className="card p-4 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-3" style={{ color: "var(--ink-faint)" }}>体重变化</div>
+            <div className="flex items-end justify-between">
+              <div>
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>起始</div>
+                <div className="display text-2xl font-bold">{firstWeight || "–"}<span className="text-sm ml-1">kg</span></div>
+              </div>
+              <div className="text-center">
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>变化</div>
+                <div className="display text-2xl font-bold" style={{
+                  color: weightChange && parseFloat(weightChange) < 0 ? "#16a34a" : weightChange && parseFloat(weightChange) > 0 ? "#ef4444" : "var(--ink)"
+                }}>
+                  {weightChange ? (parseFloat(weightChange) > 0 ? "+" : "") + weightChange : "–"}<span className="text-sm ml-1">kg</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs" style={{ color: "var(--ink-faint)" }}>最新</div>
+                <div className="display text-2xl font-bold">{lastWeight || "–"}<span className="text-sm ml-1">kg</span></div>
+              </div>
+            </div>
+            {avg7w && (
+              <div className="mt-3 p-2 rounded-lg text-center" style={{ background: "var(--accent-soft)" }}>
+                <span className="text-xs" style={{ color: "var(--ink-soft)" }}>7日平均: </span>
+                <span className="mono text-sm font-bold" style={{ color: "var(--accent)" }}>{avg7w} kg</span>
+              </div>
+            )}
+
+            {/* Mini weight chart */}
+            {weightEntries.length >= 2 && (
+              <div style={{ marginTop: 12, height: 80, position: "relative" }}>
+                <WeightChart entries={weightEntries} />
+              </div>
+            )}
+          </div>
+
+          {/* Calorie & Exercise */}
+          <div className="flex gap-3 mb-3">
+            <div className="card p-4 flex-1">
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>日均摄入</div>
+              <div className="display text-xl font-bold mt-1" style={{ color: avgCal && avgCal > 1400 ? "#ef4444" : "var(--ink)" }}>
+                {avgCal || "–"}<span className="text-xs ml-1">kcal</span>
+              </div>
+            </div>
+            <div className="card p-4 flex-1">
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>日均运动消耗</div>
+              <div className="display text-xl font-bold mt-1" style={{ color: "var(--accent)" }}>
+                {avgExCal || "–"}<span className="text-xs ml-1">kcal</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mb-3">
+            <div className="card p-4 flex-1">
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>总运动时长</div>
+              <div className="display text-xl font-bold mt-1">{totalExMin}<span className="text-xs ml-1">min</span></div>
+            </div>
+            <div className="card p-4 flex-1">
+              <div className="text-xs" style={{ color: "var(--ink-faint)" }}>打卡率</div>
+              <div className="display text-xl font-bold mt-1" style={{ color: "var(--accent)" }}>
+                {Math.round(filledDates.length / dates.filter(d => d <= todayStr()).length * 100) || 0}<span className="text-xs ml-1">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Medication adherence */}
+          <div className="card p-4 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>吃药记录</div>
+            <div className="flex gap-4">
+              <div>
+                <span className="text-xs" style={{ color: "var(--ink-faint)" }}>维生素D </span>
+                <span className="mono text-sm font-bold" style={{ color: "var(--accent)" }}>{vitDCount}/{filledDates.length}</span>
+              </div>
+              <div>
+                <span className="text-xs" style={{ color: "var(--ink-faint)" }}>铁剂 </span>
+                <span className="mono text-sm font-bold" style={{ color: "var(--accent)" }}>{ironCount}/{filledDates.length}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Body signals */}
+          <div className="card p-4 mb-3">
+            <div className="text-xs mono uppercase tracking-widest mb-2" style={{ color: "var(--ink-faint)" }}>身体信号</div>
+            <div className="flex gap-4 mb-2">
+              <div><span className="text-xs" style={{ color: "var(--ink-faint)" }}>平均饥饿感 </span><span className="mono text-sm font-bold">{avgHunger}</span></div>
+              <div><span className="text-xs" style={{ color: "var(--ink-faint)" }}>平均疲劳感 </span><span className="mono text-sm font-bold">{avgFatigue}</span></div>
+            </div>
+            <div className="flex gap-3 text-xs">
+              <span style={{ color: "var(--accent)" }}>排便正常 {bowelNormal}</span>
+              <span style={{ color: "#eab308" }}>费力 {bowelHard}</span>
+              <span style={{ color: "#ef4444" }}>无 {bowelNone}</span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── Mini weight chart (SVG) ──
+    function WeightChart({ entries }) {
+      // entries sorted newest first, we want oldest first for chart
+      const sorted = [...entries].reverse();
+      if (sorted.length < 2) return null;
+
+      const vals = sorted.map(e => e.val);
+      const minW = Math.min(...vals) - 0.5;
+      const maxW = Math.max(...vals) + 0.5;
+      const range = maxW - minW || 1;
+
+      const w = 300, h = 70, px = 10, py = 5;
+      const step = (w - 2 * px) / (sorted.length - 1);
+
+      const points = sorted.map((e, i) => ({
+        x: px + i * step,
+        y: py + (1 - (e.val - minW) / range) * (h - 2 * py),
+      }));
+      const pathD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+
+      return (
+        <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: "100%" }}>
+          <defs>
+            <linearGradient id="wg" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+          <path d={`${pathD} L ${points[points.length-1].x} ${h} L ${points[0].x} ${h} Z`} fill="url(#wg)" />
+          <path d={pathD} fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          {points.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r="3" fill="var(--accent)" />
+          ))}
+        </svg>
+      );
+    }
+
+    // ── Mount ──
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

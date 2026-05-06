@@ -1,6 +1,10 @@
 ﻿# MyData
 
-个人数据管理项目（仅限个人使用）。
+个人数据管理项目（仅限wxh使用）。
+
+## 已实现
+- 运动日志：https://wxhdata-workout.pages.dev/
+- 学习日志：https://wxhdata-study.pages.dev/
 
 ## 项目说明
 - 目标：记录和管理个人日常数据，当前主要用于个人自我追踪与复盘。
@@ -25,3 +29,4 @@
    - `git commit -m "update"`
    - `git push`
 3. Cloudflare 自动拉取并部署。
+
