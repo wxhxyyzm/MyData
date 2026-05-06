@@ -342,6 +342,7 @@
       const toastRef = useRef(null);
       const [session, setSession] = useState(null);
       const [authLoading, setAuthLoading] = useState(true);
+      const [readOnly, setReadOnly] = useState(false);
 
       useEffect(() => {
         db.auth.getSession().then(({ data: { session } }) => {
@@ -355,12 +356,12 @@
       }, []);
 
       useEffect(() => {
-        if (!session) return;
+        if (!session && !readOnly) return;
         loadProjects()
           .then(setProjects)
           .catch(e => { console.error(e); showToast("加载失败"); })
           .finally(() => setLoading(false));
-      }, [session]);
+      }, [session, readOnly]);
 
       const showToast = (msg) => {
         setToast(msg);
@@ -369,6 +370,10 @@
       };
 
       const handleArchiveProject = async (projectId, summary) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         const old = projects.find(p => p.id === projectId);
         if (!old) return;
         const archivedAt = new Date().toISOString();
@@ -384,6 +389,10 @@
       };
 
       const handleUnarchiveProject = async (projectId) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         const old = projects.find(p => p.id === projectId);
         if (!old) return;
         setProjects(prev => prev.map(p => p.id === projectId ? { ...p, archived: false, archived_at: null } : p));
@@ -397,7 +406,7 @@
       };
 
       if (authLoading) return <LoadingScreen />;
-      if (!session) return <LoginScreen />;
+      if (!session && !readOnly) return <LoginScreen onViewOnly={() => setReadOnly(true)} />;
       if (loading) return <LoadingScreen />;
 
       const activeProject = projects.find(p => p.id === activeProjectId);
@@ -414,6 +423,7 @@
                 onBack={() => setActiveProjectId(null)}
                 onArchive={handleArchiveProject}
                 showToast={showToast}
+                readOnly={readOnly}
               />
             )}
             {toast && <div className="toast">{toast}</div>}
@@ -422,7 +432,7 @@
       );
     }
 
-    function LoginScreen() {
+    function LoginScreen({ onViewOnly }) {
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
@@ -570,6 +580,19 @@
                 }}
               >
                 {loading ? "登录中..." : "进入"}
+              </button>
+
+              <button
+                onClick={onViewOnly}
+                style={{
+                  width: "100%", padding: "12px", marginTop: 12,
+                  background: "transparent", color: "var(--accent)",
+                  border: "1.5px solid var(--line)", borderRadius: 14,
+                  fontSize: 14, fontWeight: 600, cursor: "pointer",
+                  fontFamily: "var(--font-body)",
+                }}
+              >
+                无账号，仅查看数据
               </button>
             </div>
 
@@ -790,7 +813,7 @@
     // ================================================================
     // Project Page — 项目详情页（含四个 tab）
     // ================================================================
-    function ProjectPage({ project, onBack, onArchive, showToast }) {
+    function ProjectPage({ project, onBack, onArchive, showToast, readOnly }) {
       const [logs, setLogs] = useState([]);
       const [notes, setNotes] = useState([]);
       const [moduleMeta, setModuleMeta] = useState([]); // [{module_id, subtitle}]
@@ -845,6 +868,11 @@
 
       // ── handlers ──
       const handleCheckIn = async (item, { date, note }) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          setCheckInItem(null);
+          return;
+        }
         if (logs.some(l => l.item_id === item.id && l.date === date)) {
           showToast("今天已打卡过这一条");
           setCheckInItem(null);
@@ -862,6 +890,10 @@
       };
 
       const handleUncheck = async (itemId) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         const log = logs.find(l => l.item_id === itemId);
         if (!log) return;
         if (!confirm("撤销这条打卡记录？")) return;
@@ -871,6 +903,11 @@
       };
 
       const handleAddNote = async ({ type, itemId, content, date }) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          setAddNoteFor(null);
+          return;
+        }
         // 如果是额外学习且指定了日期，构造一个对应日期的 created_at
         let createdAt = new Date().toISOString();
         if (type === 'extra' && date) {
@@ -892,6 +929,10 @@
       };
 
       const handleResolveNote = async (id) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         const old = notes.find(n => n.id === id);
         if (!old) return;
         const updated = { ...old, resolved: !old.resolved, resolved_at: !old.resolved ? new Date().toISOString() : null };
@@ -901,6 +942,11 @@
       };
 
       const handleUpdateNote = async (id, patch) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          setEditingNote(null);
+          return;
+        }
         const old = notes.find(n => n.id === id);
         if (!old) return;
         const updated = { ...old, ...patch };
@@ -911,6 +957,10 @@
       };
 
       const handleDeleteNote = async (id) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         if (!confirm("删除这条记录？")) return;
         const old = notes.find(n => n.id === id);
         setNotes(prev => prev.filter(n => n.id !== id));
@@ -919,6 +969,10 @@
       };
 
       const handleDeleteLog = async (id) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         if (!confirm("删除这条打卡记录？")) return;
         const old = logs.find(l => l.id === id);
         setLogs(prev => prev.filter(l => l.id !== id));
@@ -927,6 +981,11 @@
       };
 
       const handleSaveSubtitle = async (moduleId, subtitle) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          setEditingModuleId(null);
+          return;
+        }
         const trimmed = subtitle.trim();
         // 本地更新
         const old = [...moduleMeta];
@@ -962,7 +1021,7 @@
             unresolvedCount={unresolvedCount}
             allDone={allDone}
             isArchived={project.archived}
-            onArchiveClick={() => setArchiveModalOpen(true)}
+              onArchiveClick={() => readOnly ? showToast("只读模式，不能修改") : setArchiveModalOpen(true)}
           />
 
           {tab === "plan" && (
@@ -974,11 +1033,11 @@
               notes={planNotes}
               expandedModules={expandedModules}
               onToggleModule={toggleModule}
-              onCheckIn={(item) => !project.archived && setCheckInItem(item)}
-              onUncheck={(id) => !project.archived && handleUncheck(id)}
-              onAddNote={(item) => !project.archived && setAddNoteFor({ type: 'note', item })}
-              onEditSubtitle={(moduleId) => !project.archived && setEditingModuleId(moduleId)}
-              isArchived={project.archived}
+              onCheckIn={(item) => (!project.archived && !readOnly) ? setCheckInItem(item) : readOnly && showToast("只读模式，不能修改")}
+              onUncheck={(id) => (!project.archived && !readOnly) ? handleUncheck(id) : readOnly && showToast("只读模式，不能修改")}
+              onAddNote={(item) => (!project.archived && !readOnly) ? setAddNoteFor({ type: 'note', item }) : readOnly && showToast("只读模式，不能修改")}
+              onEditSubtitle={(moduleId) => (!project.archived && !readOnly) ? setEditingModuleId(moduleId) : readOnly && showToast("只读模式，不能修改")}
+              isArchived={project.archived || readOnly}
             />
           )}
           {tab === "notes" && (
@@ -986,18 +1045,18 @@
               notes={planNotes}
               modules={planModules}
               onResolve={handleResolveNote}
-              onEdit={setEditingNote}
+              onEdit={(note) => readOnly ? showToast("只读模式，不能修改") : setEditingNote(note)}
               onDelete={handleDeleteNote}
-              isArchived={project.archived}
+              isArchived={project.archived || readOnly}
             />
           )}
           {tab === "extra" && (
             <ExtraView
               notes={extraNotes}
-              onAdd={() => !project.archived && setAddNoteFor({ type: 'extra' })}
-              onEdit={setEditingNote}
+              onAdd={() => (!project.archived && !readOnly) ? setAddNoteFor({ type: 'extra' }) : readOnly && showToast("只读模式，不能修改")}
+              onEdit={(note) => readOnly ? showToast("只读模式，不能修改") : setEditingNote(note)}
               onDelete={handleDeleteNote}
-              isArchived={project.archived}
+              isArchived={project.archived || readOnly}
             />
           )}
           {tab === "history" && (

@@ -5,7 +5,7 @@
 ## 已实现
 - 运动日志：https://wxhdata-workout.pages.dev/
 - 学习日志：https://wxhdata-study.pages.dev/
-- 健康日志：
+- 健康日志：https://wxhdata-health.pages.dev/
 
 ## 项目说明
 - 目标：记录和管理个人日常数据，当前主要用于个人自我追踪与复盘。

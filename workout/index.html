@@ -371,6 +371,7 @@ function App() {
   const toastTimerRef = useRef(null);
   const [session, setSession] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [readOnly, setReadOnly] = useState(false);
 
   useEffect(() => {
     db.auth.getSession().then(({ data: { session } }) => {
@@ -384,7 +385,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session && !readOnly) return;
     Promise.all([loadEntries(), loadCustom()])
       .then(([e, c]) => {
         setEntries(e);
@@ -396,7 +397,7 @@ function App() {
         setLoadError(err);
         setLoading(false);
       });
-  }, [session]);
+  }, [session, readOnly]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -405,6 +406,10 @@ function App() {
   };
 
   const addEntry = async (entry) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      return;
+    }
     const newEntry = { ...entry, id: genId() };
     const previous = entries;
     const updated = [newEntry, ...entries];
@@ -419,6 +424,11 @@ function App() {
   };
 
   const updateEntryInDB = async (id, patch) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      setEditingEntry(null);
+      return;
+    }
     const existing = entries.find(e => e.id === id);
     if (!existing) return;
     const newEntry = { ...existing, ...patch };
@@ -436,6 +446,10 @@ function App() {
   };
 
   const deleteEntry = async (id) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      return;
+    }
     const previous = entries;
     const updated = entries.filter((e) => e.id !== id);
     setEntries(updated);
@@ -450,6 +464,10 @@ function App() {
 
   // Add custom preset (exercise or location). Avoids duplicates.
   const addCustomPreset = async (kind, item) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      return;
+    }
     // kind: 'cardio' | 'strength' | 'locations'
     const list = custom[kind] || [];
     // Dedupe by name (for exercises) or label (for locations)
@@ -461,6 +479,10 @@ function App() {
   };
 
   const removeCustomPreset = async (kind, matchValue) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      return;
+    }
     const list = custom[kind] || [];
     const matchKey = kind === "locations" ? "label" : "name";
     const updated = { ...custom, [kind]: list.filter((x) => x[matchKey] !== matchValue) };
@@ -486,6 +508,10 @@ function App() {
   };
 
   const importData = async (file) => {
+    if (readOnly) {
+      showToast("只读模式，不能修改");
+      return;
+    }
     try {
       const text = await file.text();
       const payload = JSON.parse(text);
@@ -526,7 +552,7 @@ function App() {
   };
 
   if (authLoading) return <LoginScreen authLoading={true} />;
-  if (!session) return <LoginScreen />;
+  if (!session && !readOnly) return <LoginScreen onViewOnly={() => setReadOnly(true)} />;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)", color: "var(--ink)", fontFamily: "var(--font-body)" }}>
@@ -576,7 +602,7 @@ function App() {
           ) : (
             <>
               {tab === "today" && <TodayView entries={entries} onAdd={addEntry} custom={custom} onAddCustomPreset={addCustomPreset} />}
-              {tab === "log" && <LogView entries={entries} onDelete={deleteEntry} onEdit={setEditingEntry} custom={custom} />}
+              {tab === "log" && <LogView entries={entries} onDelete={deleteEntry} onEdit={(entry) => readOnly ? showToast("只读模式，不能修改") : setEditingEntry(entry)} custom={custom} />}
               {tab === "stats" && <StatsView entries={entries} custom={custom} />}
               {tab === "settings" && <SettingsView custom={custom} onRemoveCustom={removeCustomPreset} onExport={exportData} onImport={importData} entryCount={entries.length} />}
             </>
@@ -2280,7 +2306,7 @@ function CustomListCard({ title, items, onRemove, matchKey, empty }) {
 }
 
     // ── Login Screen ──
-    function LoginScreen({ authLoading = false }) {
+    function LoginScreen({ authLoading = false, onViewOnly }) {
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
@@ -2443,6 +2469,18 @@ function CustomListCard({ title, items, onRemove, matchKey, empty }) {
                     }}
                   >
                     {loading ? "登录中..." : "进入"}
+                  </button>
+                  <button
+                    onClick={onViewOnly}
+                    style={{
+                      width: "100%", padding: "12px", marginTop: 12,
+                      background: "transparent", color: "#d9603b",
+                      border: "1.5px solid #e0d6c5", borderRadius: 14,
+                      fontSize: 14, fontWeight: 600, cursor: "pointer",
+                      fontFamily: "'Manrope', system-ui, sans-serif",
+                    }}
+                  >
+                    &#26080;&#36134;&#21495;&#65292;&#20165;&#26597;&#30475;&#25968;&#25454;
                   </button>
                 </div>
 

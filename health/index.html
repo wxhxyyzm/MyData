@@ -293,6 +293,7 @@
       const [loadError, setLoadError] = useState(null);
       const [activePhase, setActivePhase] = useState(null);
       const [toast, setToast] = useState('');
+      const [readOnly, setReadOnly] = useState(false);
 
       useEffect(() => {
         db.auth.getSession().then(({ data }) => {
@@ -304,13 +305,13 @@
       }, []);
 
       useEffect(() => {
-        if (!session) return;
+        if (!session && !readOnly) return;
         setLoading(true);
         loadAllLogs()
           .then(data => { setLogs(data); setLoadError(null); })
           .catch(e => setLoadError(e))
           .finally(() => setLoading(false));
-      }, [session]);
+      }, [session, readOnly]);
 
       const showToast = (msg) => {
         setToast(msg);
@@ -324,6 +325,10 @@
       }, [logs]);
 
       const handleSaveDay = async (date, data) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         try {
           await upsertLog(date, data);
           // 本地更新，不重新拉取（避免每次保存都等待）
@@ -343,7 +348,7 @@
       };
 
       if (authLoading) return <LoadingScreen />;
-      if (!session) return <LoginScreen />;
+      if (!session && !readOnly) return <LoginScreen onViewOnly={() => setReadOnly(true)} />;
       if (loading) return <LoadingScreen />;
       if (loadError) return <ErrorScreen error={loadError} />;
 
@@ -359,6 +364,7 @@
                 onBack={() => setActivePhase(null)}
                 onSaveDay={handleSaveDay}
                 showToast={showToast}
+                readOnly={readOnly}
               />
             )}
             {toast && <div className="toast">{toast}</div>}
@@ -391,7 +397,7 @@
     }
 
     // ── Login ──
-    function LoginScreen() {
+    function LoginScreen({ onViewOnly }) {
       const [email, setEmail] = useState('');
       const [password, setPassword] = useState('');
       const [error, setError] = useState('');
@@ -469,6 +475,17 @@
                 boxShadow: loading || !email || !password ? "none" : "0 4px 16px rgba(22,163,74,0.3)",
               }}>
               {loading ? "登录中..." : "进入"}
+            </button>
+
+            <button onClick={onViewOnly}
+              style={{
+                width: "100%", padding: "12px", marginTop: 12,
+                background: "transparent", color: "var(--accent)",
+                border: "1.5px solid var(--line)", borderRadius: 14,
+                fontSize: 14, fontWeight: 600, cursor: "pointer",
+                fontFamily: "var(--font-body)",
+              }}>
+              无账号，仅查看数据
             </button>
 
             <div style={{ textAlign: "center", marginTop: 28, fontSize: 12, color: "var(--ink-faint)", lineHeight: 1.6 }}>
@@ -557,7 +574,7 @@
     // ════════════════════════════════════════
     // 阶段详情页 - 三个 Tab
     // ════════════════════════════════════════
-    function PhasePage({ phase, logMap, onBack, onSaveDay, showToast }) {
+    function PhasePage({ phase, logMap, onBack, onSaveDay, showToast, readOnly }) {
       const [tab, setTab] = useState("overview");
       const [selectedDate, setSelectedDate] = useState(null);
       const dates = useMemo(() => phaseDates(phase), [phase]);
@@ -591,7 +608,7 @@
               <CheckinTab
                 phase={phase} dates={dates} logMap={logMap}
                 selectedDate={selectedDate} setSelectedDate={setSelectedDate}
-                onSaveDay={onSaveDay} showToast={showToast}
+                onSaveDay={onSaveDay} showToast={showToast} readOnly={readOnly}
               />
             )}
             {tab === "stats" && (
@@ -761,7 +778,7 @@
     }
 
     // ── Tab 2: 每日打卡 ──
-    function CheckinTab({ phase, dates, logMap, selectedDate, setSelectedDate, onSaveDay, showToast }) {
+    function CheckinTab({ phase, dates, logMap, selectedDate, setSelectedDate, onSaveDay, showToast, readOnly }) {
       const today = todayStr();
       // Default to today if in range, else last date
       const effectiveDate = selectedDate || (dates.includes(today) ? today : dates[dates.length - 1]);
@@ -775,6 +792,10 @@
       }, [effectiveDate, logMap]);
 
       const updateField = (key, val) => {
+        if (readOnly) {
+          showToast("只读模式，不能修改");
+          return;
+        }
         setFormData(prev => ({ ...prev, [key]: val }));
         setDirty(true);
       };
@@ -866,9 +887,9 @@
           </div>
 
           {/* Save button */}
-          <button onClick={handleSave} disabled={!dirty} className="btn-primary"
-            style={{ width: "100%", marginBottom: 16, opacity: dirty ? 1 : 0.5, cursor: dirty ? "pointer" : "default" }}>
-            {dirty ? "保存这一天" : (logMap[effectiveDate] ? "已保存 ✓" : "暂无记录")}
+          <button onClick={handleSave} disabled={!dirty || readOnly} className="btn-primary"
+            style={{ width: "100%", marginBottom: 16, opacity: dirty && !readOnly ? 1 : 0.5, cursor: dirty && !readOnly ? "pointer" : "default" }}>
+            {readOnly ? "只读查看" : (dirty ? "保存这一天" : (logMap[effectiveDate] ? "已保存 ✓" : "暂无记录"))}
           </button>
         </div>
       );
