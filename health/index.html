@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
@@ -6,6 +6,9 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="theme-color" content="#16a34a" />
+  <link rel="apple-touch-icon" sizes="180x180" href="icon.png?v=1" />
+  <link rel="icon" type="image/png" sizes="512x512" href="icon.png?v=1" />
+  <link rel="icon" type="image/png" sizes="32x32" href="icon.png?v=1" />
   <title>WXH的健康日志</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
@@ -88,10 +91,8 @@
     function findLucideIcon(name) {
       const icons = lucide.icons || {};
       if (icons[name]) return icons[name];
-      const pascal = name.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+      const pascal = name.split('-').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join('');
       if (icons[pascal]) return icons[pascal];
-      const kebab = name.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z])(\d)/g, '$1-$2').toLowerCase();
-      if (icons[kebab]) return icons[kebab];
       return null;
     }
 
@@ -870,10 +871,9 @@
           {item.inputType === "time" && (
             <input type="time" value={value || ""} onChange={e => onChange(e.target.value)}
               style={{
-                display: "block", width: "100%", maxWidth: "100%", minWidth: 0,
-                background: "var(--bg)", border: "1px solid var(--line)",
+                width: "100%", background: "var(--bg)", border: "1px solid var(--line)",
                 borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
-                color: "var(--ink)", outline: "none", boxSizing: "border-box",
+                color: "var(--ink)", outline: "none",
               }} />
           )}
 
