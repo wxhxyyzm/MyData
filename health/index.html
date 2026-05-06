@@ -85,8 +85,18 @@
     const { useState, useEffect, useMemo, useRef, useCallback } = React;
 
     // ── Lucide Icons ──
+    function findLucideIcon(name) {
+      const icons = lucide.icons || {};
+      if (icons[name]) return icons[name];
+      const pascal = name.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('');
+      if (icons[pascal]) return icons[pascal];
+      const kebab = name.replace(/([a-z])([A-Z])/g, '$1-$2').replace(/([A-Z])(\d)/g, '$1-$2').toLowerCase();
+      if (icons[kebab]) return icons[kebab];
+      return null;
+    }
+
     const LucideIcon = ({ name, size=20, strokeWidth=2, style, className }) => {
-      const iconData = lucide.icons[name];
+      const iconData = findLucideIcon(name);
       if (!iconData) return null;
       const paths = iconData[2] || [];
       return (
@@ -860,9 +870,10 @@
           {item.inputType === "time" && (
             <input type="time" value={value || ""} onChange={e => onChange(e.target.value)}
               style={{
-                width: "100%", background: "var(--bg)", border: "1px solid var(--line)",
+                display: "block", width: "100%", maxWidth: "100%", minWidth: 0,
+                background: "var(--bg)", border: "1px solid var(--line)",
                 borderRadius: 10, padding: "10px 12px", fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
-                color: "var(--ink)", outline: "none",
+                color: "var(--ink)", outline: "none", boxSizing: "border-box",
               }} />
           )}
 
