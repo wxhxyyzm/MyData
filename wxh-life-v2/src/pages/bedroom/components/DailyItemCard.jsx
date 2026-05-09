@@ -59,11 +59,24 @@ export default function DailyItemCard({ item, value, date, onChange, plan, calTa
   }
 
   if (item.inputType === 'time') {
+    const [hh, mm] = (value || '').split(':');
+    const setTime = (h, m) => onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
+    const selStyle = { ...inputStyle('var(--font-mono)'), flex: 1, appearance: 'none', WebkitAppearance: 'none', textAlign: 'center', cursor: 'pointer' };
     return (
       <div className="card p-3">
         <Header Icon={Icon} label={item.label} />
-        <div style={{ overflow: 'hidden', borderRadius: 10 }}>
-          <input type="time" value={value || ''} onChange={(event) => onChange(event.target.value)} style={{ ...inputStyle('var(--font-mono)'), maxWidth: '100%', boxSizing: 'border-box' }} />
+        <div className="flex items-center gap-2">
+          <select value={hh || ''} onChange={(e) => setTime(e.target.value, mm || '00')} style={selStyle}>
+            <option value="">时</option>
+            {hours.map((h) => <option key={h} value={String(h).padStart(2, '0')}>{String(h).padStart(2, '0')}</option>)}
+          </select>
+          <span className="mono font-bold" style={{ color: 'var(--ink-faint)' }}>:</span>
+          <select value={mm || ''} onChange={(e) => setTime(hh || '00', e.target.value)} style={selStyle}>
+            <option value="">分</option>
+            {minutes.map((m) => <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>)}
+          </select>
         </div>
       </div>
     );
