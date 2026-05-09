@@ -62,7 +62,9 @@ export default function DailyItemCard({ item, value, date, onChange, plan, calTa
     return (
       <div className="card p-3">
         <Header Icon={Icon} label={item.label} />
-        <input type="time" value={value || ''} onChange={(event) => onChange(event.target.value)} style={inputStyle('var(--font-mono)')} />
+        <div style={{ overflow: 'hidden', borderRadius: 10 }}>
+          <input type="time" value={value || ''} onChange={(event) => onChange(event.target.value)} style={{ ...inputStyle('var(--font-mono)'), maxWidth: '100%', boxSizing: 'border-box' }} />
+        </div>
       </div>
     );
   }
