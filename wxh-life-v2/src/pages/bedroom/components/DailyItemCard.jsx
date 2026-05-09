@@ -63,7 +63,7 @@ export default function DailyItemCard({ item, value, date, onChange, plan, calTa
     const setTime = (h, m) => onChange(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const minutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
-    const selStyle = { ...inputStyle('var(--font-mono)'), flex: 1, appearance: 'none', WebkitAppearance: 'none', textAlign: 'center', cursor: 'pointer' };
+    const selStyle = { ...inputStyle('var(--font-mono)'), flex: 1, minWidth: 0, width: 0, appearance: 'none', WebkitAppearance: 'none', textAlign: 'center', cursor: 'pointer' };
     return (
       <div className="card p-3">
         <Header Icon={Icon} label={item.label} />
