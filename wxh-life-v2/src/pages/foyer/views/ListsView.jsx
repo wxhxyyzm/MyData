@@ -170,7 +170,7 @@ function ListCard({ list, counts, onDelete, dragProps }) {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="font-semibold text-sm">{list.title}</div>
             <div className="mono text-xs mt-0.5" style={{ color: 'var(--ink-faint)' }}>
-              {total === 0 ? '还没有事项' : `${done}/${total} 已完成`}
+              {total === 0 ? '还没有事项' : done === total ? '全部完成 ✓' : done === 0 ? `${total} 项待完成` : `${done}/${total} 已完成`}
             </div>
           </div>
         </div>
