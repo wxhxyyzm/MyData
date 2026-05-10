@@ -4,7 +4,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../../hooks/useToast';
 import { genId, todayStr } from '../../../lib/utils';
 import { deleteNote, insertNote, updateNote } from '../api';
-import { MOODS, PRESET_TAGS } from '../presets';
+import { DEFAULT_TAG_COLOR, MOODS, PRESET_TAGS, TAG_COLORS } from '../presets';
 
 export default function NotesView({ notes, setNotes }) {
   const { isOwner } = useAuth();
@@ -69,6 +69,8 @@ export default function NotesView({ notes, setNotes }) {
 function NoteCard({ note, onEdit, onDelete }) {
   const [confirming, setConfirming] = useState(false);
   const mood = MOODS.find((m) => m.key === note.mood);
+  const firstTag = note.tags?.[0];
+  const tagColor = firstTag ? (TAG_COLORS[firstTag] || DEFAULT_TAG_COLOR) : null;
 
   const handleDelete = () => {
     if (!confirming) { setConfirming(true); setTimeout(() => setConfirming(false), 2000); return; }
@@ -76,7 +78,7 @@ function NoteCard({ note, onEdit, onDelete }) {
   };
 
   return (
-    <div className="card p-4" style={{ borderLeft: '3px solid var(--accent-soft)' }}>
+    <div className="card p-4" style={{ borderLeft: `3px solid ${tagColor ? tagColor.border : 'var(--accent-soft)'}`, background: tagColor ? tagColor.bg : undefined }}>
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2 flex-wrap">
           {mood && <span title={mood.label}>{mood.emoji}</span>}
@@ -166,13 +168,18 @@ function NoteModal({ initial, onConfirm, onCancel }) {
         <div className="mb-5">
           <span className="mono text-xs uppercase tracking-widest block mb-2" style={{ color: 'var(--ink-faint)' }}>标签 · 可选</span>
           <div className="flex flex-wrap gap-1.5 mb-2">
-            {PRESET_TAGS.map((tag) => (
-              <button key={tag} type="button" onClick={() => toggleTag(tag)}
-                className="mono text-xs px-2.5 py-1 rounded-full"
-                style={{ background: tags.includes(tag) ? 'var(--accent)' : 'var(--bg)', border: `1px solid ${tags.includes(tag) ? 'var(--accent)' : 'var(--line)'}`, color: tags.includes(tag) ? 'white' : 'var(--ink-soft)', cursor: 'pointer' }}>
-                #{tag}
-              </button>
-            ))}
+            {PRESET_TAGS.map((tag) => {
+              const c = TAG_COLORS[tag];
+              const selected = tags.includes(tag);
+              return (
+                <button key={tag} type="button" onClick={() => toggleTag(tag)}
+                  className="mono text-xs px-2.5 py-1 rounded-full flex items-center gap-1"
+                  style={{ background: selected ? (c?.border || 'var(--accent)') : 'var(--bg)', border: `1px solid ${selected ? (c?.border || 'var(--accent)') : 'var(--line)'}`, color: selected ? 'white' : 'var(--ink-soft)', cursor: 'pointer' }}>
+                  {!selected && c && <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.border, flexShrink: 0, display: 'inline-block' }} />}
+                  #{tag}
+                </button>
+              );
+            })}
           </div>
           <div className="flex gap-2">
             <input className="input flex-1" placeholder="自定义标签" value={customTag}
