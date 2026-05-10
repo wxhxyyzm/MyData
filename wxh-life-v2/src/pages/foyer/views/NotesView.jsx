@@ -78,8 +78,9 @@ function NoteCard({ note, onEdit, onDelete }) {
   return (
     <div className="card p-4" style={{ borderLeft: '3px solid var(--accent-soft)' }}>
       <div className="flex items-start justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {mood && <span title={mood.label}>{mood.emoji}</span>}
+          {note.keyword && <span className="text-xs font-semibold" style={{ color: 'var(--ink-soft)' }}>{note.keyword}</span>}
           <span className="mono text-xs" style={{ color: 'var(--ink-faint)' }}>{note.date}</span>
         </div>
         <div className="flex gap-1 shrink-0">
@@ -107,6 +108,7 @@ function NoteCard({ note, onEdit, onDelete }) {
 function NoteModal({ initial, onConfirm, onCancel }) {
   const [content, setContent] = useState(initial?.content || '');
   const [date, setDate] = useState(initial?.date || todayStr());
+  const [keyword, setKeyword] = useState(initial?.keyword || '');
   const [mood, setMood] = useState(initial?.mood || null);
   const [tags, setTags] = useState(initial?.tags || []);
   const [customTag, setCustomTag] = useState('');
@@ -120,7 +122,7 @@ function NoteModal({ initial, onConfirm, onCancel }) {
 
   const handleSubmit = () => {
     if (!content.trim()) return;
-    onConfirm({ content: content.trim(), date, mood, tags });
+    onConfirm({ content: content.trim(), date, keyword: keyword.trim() || null, mood, tags });
   };
 
   return (
@@ -134,6 +136,11 @@ function NoteModal({ initial, onConfirm, onCancel }) {
         <label className="block mb-4">
           <span className="mono text-xs uppercase tracking-widest block mb-1.5" style={{ color: 'var(--ink-faint)' }}>日期</span>
           <input className="input mono" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+
+        <label className="block mb-4">
+          <span className="mono text-xs uppercase tracking-widest block mb-1.5" style={{ color: 'var(--ink-faint)' }}>关键词 · 可选</span>
+          <input className="input" placeholder="一个词或短语概括这条灵感" value={keyword} onChange={(e) => setKeyword(e.target.value)} maxLength={20} />
         </label>
 
         <label className="block mb-4">

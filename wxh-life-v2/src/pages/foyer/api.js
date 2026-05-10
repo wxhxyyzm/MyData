@@ -12,8 +12,8 @@ export async function loadNotes() {
   return data || [];
 }
 
-export async function insertNote({ content, date, mood, tags }) {
-  const note = { id: genId(), content, date, mood: mood || null, tags: tags || [], created_at: new Date().toISOString() };
+export async function insertNote({ content, date, mood, tags, keyword }) {
+  const note = { id: genId(), content, date, mood: mood || null, tags: tags || [], keyword: keyword || null, created_at: new Date().toISOString() };
   const { error } = await supabase.from('foyer_notes').insert(note);
   if (error) throw error;
   return note;
