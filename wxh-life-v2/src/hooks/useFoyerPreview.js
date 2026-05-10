@@ -6,13 +6,16 @@ export function useFoyerPreview() {
 
   useEffect(() => {
     Promise.all([
+      supabase.from('foyer_todos').select('id', { count: 'exact', head: true }).eq('done', false),
       supabase.from('foyer_notes').select('id', { count: 'exact', head: true }),
-      supabase.from('foyer_lists').select('id', { count: 'exact', head: true }),
-    ]).then(([notes, lists]) => {
+    ]).then(([todos, notes]) => {
+      const tc = todos.count || 0;
       const nc = notes.count || 0;
-      const lc = lists.count || 0;
-      if (nc === 0 && lc === 0) { setPreview('还没有记录'); return; }
-      setPreview(`${nc} 条灵感 · ${lc} 个清单`);
+      if (tc === 0 && nc === 0) { setPreview('还没有记录'); return; }
+      const parts = [];
+      if (tc > 0) parts.push(`${tc} 项待办`);
+      if (nc > 0) parts.push(`${nc} 条灵感`);
+      setPreview(parts.join(' · '));
     }).catch(() => setPreview(null));
   }, []);
 

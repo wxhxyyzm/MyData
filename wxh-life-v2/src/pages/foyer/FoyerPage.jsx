@@ -12,8 +12,8 @@ import ListsView from './views/ListsView';
 import NotesView from './views/NotesView';
 
 const TABS = [
-  { id: 'notes', label: '灵感', Icon: Lightbulb },
   { id: 'lists', label: '清单', Icon: ClipboardList },
+  { id: 'notes', label: '灵感', Icon: Lightbulb },
 ];
 
 export default function FoyerPage() {
@@ -65,7 +65,7 @@ export default function FoyerPage() {
 
 function MainView({ notes, setNotes, lists, setLists, counts }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') || 'notes';
+  const tab = searchParams.get('tab') || 'lists';
   return (
     <>
       <TopBar title="玄关" emoji="🚪" />
