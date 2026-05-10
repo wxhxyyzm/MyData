@@ -95,7 +95,7 @@ function NoteCard({ note, onEdit, onDelete }) {
           )}
         </div>
       </div>
-      <div className="text-sm leading-6" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)' }}>{note.content}</div>
+      <div className="text-sm leading-6" style={{ whiteSpace: 'pre-wrap', color: 'var(--ink)', maxHeight: '6rem', overflowY: 'auto' }}>{note.content}</div>
       {note.tags?.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-3">
           {note.tags.map((tag) => (
