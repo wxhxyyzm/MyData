@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"d:\\\\myapp\\\\wxh-life\" -Recurse | ForEach-Object { $_.FullName.Replace\\(\"d:\\\\myapp\\\\wxh-life\\\\\", \"\"\\) })",
+      "PowerShell(Get-ChildItem -Path \"d:\\\\myapp\\\\wxh-life\\\\src\" -Recurse | Where-Object { !$_.PSIsContainer } | ForEach-Object { $_.FullName.Replace\\(\"d:\\\\myapp\\\\wxh-life\\\\src\\\\\", \"\"\\) })",
+      "PowerShell(robocopy \"d:\\\\myapp\\\\wxh-life\" \"d:\\\\myapp\\\\wxh-life-v2\" /E /XD \"node_modules\" \".git\" \"dist\" /NFL /NDL /NJH /NJS; Write-Host \"Done: $LASTEXITCODE\")",
+      "PowerShell(Get-ChildItem \"d:\\\\myapp\\\\wxh-life-v2\\\\src\" -Recurse | Where-Object { !$_.PSIsContainer } | Measure-Object | Select-Object -ExpandProperty Count)",
+      "Bash(npm install *)"
+    ]
+  }
+}

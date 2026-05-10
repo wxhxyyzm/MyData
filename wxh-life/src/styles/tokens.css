@@ -24,16 +24,16 @@
 }
 
 [data-room="gym"] {
-  --bg: #f9f5f0;
-  --bg-card: #ffffff;
+  --bg: #f4efe6;
+  --bg-card: #fbf7ef;
   --ink: #2a241c;
   --ink-soft: #6b6055;
   --ink-faint: #a59a8c;
-  --accent: #c8553a;
-  --accent-soft: #f5ddd3;
+  --accent: #d9603b;
+  --accent-soft: #f2c9b5;
   --accent-2: #5a7a4e;
   --accent-2-soft: #c9d8c0;
-  --line: #e8e0d4;
+  --line: #e0d6c5;
 }
 
 [data-room="study"] {
@@ -56,15 +56,4 @@
   --accent: #16a34a;
   --accent-soft: #dcfce7;
   --line: #c6e4cf;
-}
-
-[data-room="foyer"] {
-  --bg: #fffbeb;
-  --bg-card: #ffffff;
-  --ink: #1c1400;
-  --ink-soft: #57400b;
-  --ink-faint: #9b7e3a;
-  --accent: #b45309;
-  --accent-soft: #fef3c7;
-  --line: #fde68a;
 }

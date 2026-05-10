@@ -8,7 +8,6 @@ import LoginPage from './pages/LoginPage';
 import GymPage from './pages/gym/GymPage';
 import BedroomPage from './pages/bedroom/BedroomPage';
 import StudyPage from './pages/study/StudyPage';
-import FoyerPage from './pages/foyer/FoyerPage';
 
 export default function App() {
   return (
@@ -21,7 +20,6 @@ export default function App() {
             <Route path="/gym/*" element={<AuthGuard><GymPage /></AuthGuard>} />
             <Route path="/study/*" element={<AuthGuard><StudyPage /></AuthGuard>} />
             <Route path="/bedroom/*" element={<AuthGuard><BedroomPage /></AuthGuard>} />
-            <Route path="/foyer/*" element={<AuthGuard><FoyerPage /></AuthGuard>} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
           <ToastContainer />

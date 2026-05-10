@@ -2,12 +2,23 @@ import { useNavigate } from 'react-router-dom';
 import RoomCard from '../components/RoomCard';
 import { useAuth } from '../hooks/useAuth';
 import { useBedroomPreview } from '../hooks/useBedroomPreview';
+import { useFoyerPreview } from '../hooks/useFoyerPreview';
 import { useGymPreview } from '../hooks/useGymPreview';
 import { useStudyPreview } from '../hooks/useStudyPreview';
 import { getWeekday, todayStr } from '../lib/utils';
 import { LogOut } from '../icons';
 
 const ROOM_CONFIGS = [
+  {
+    id: 'foyer',
+    name: '玄关',
+    subtitle: 'Foyer',
+    desc: '灵感记录 · 待办清单',
+    emoji: '🚪',
+    color: '#b45309',
+    colorSoft: '#fef3c7',
+    path: '/foyer',
+  },
   {
     id: 'gym',
     name: '健身房',
@@ -46,8 +57,9 @@ export default function HallPage() {
   const gymPreview = useGymPreview();
   const studyPreview = useStudyPreview();
   const bedroomPreview = useBedroomPreview();
+  const foyerPreview = useFoyerPreview();
   const today = todayStr();
-  const previews = { gym: gymPreview, study: studyPreview, bedroom: bedroomPreview };
+  const previews = { foyer: foyerPreview, gym: gymPreview, study: studyPreview, bedroom: bedroomPreview };
 
   const handleExit = async () => {
     localStorage.removeItem('wxh_guest_mode');
