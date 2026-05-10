@@ -1,15 +1,62 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Plus, Trash2, X } from '../../../icons';
+import {
+  DndContext, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors,
+} from '@dnd-kit/core';
+import {
+  SortableContext, arrayMove, useSortable, verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { Check, GripVertical, Plus, Trash2, X } from '../../../icons';
 import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../../hooks/useToast';
-import { deleteList, insertList } from '../api';
+import { deleteList, insertList, loadAllTodoCounts } from '../api';
 import { LIST_EMOJIS } from '../presets';
 
-export default function ListsView({ lists, setLists, counts }) {
+const ORDER_KEY = 'foyer_list_order';
+function getStoredOrder() { try { return JSON.parse(localStorage.getItem(ORDER_KEY)) || []; } catch { return []; } }
+function saveStoredOrder(ids) { localStorage.setItem(ORDER_KEY, JSON.stringify(ids)); }
+function sortByOrder(items, order) {
+  if (!order.length) return items;
+  const rank = Object.fromEntries(order.map((id, i) => [String(id), i]));
+  return [...items].sort((a, b) => (rank[String(a.id)] ?? 9999) - (rank[String(b.id)] ?? 9999));
+}
+
+export default function ListsView({ lists, setLists }) {
   const { isOwner } = useAuth();
   const { showToast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
+  const [counts, setCounts] = useState({});
+  const [orderedIds, setOrderedIds] = useState(getStoredOrder);
+
+  useEffect(() => {
+    loadAllTodoCounts().then(setCounts).catch(() => {});
+  }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+  );
+
+  const sorted = sortByOrder(lists, orderedIds);
+  const pinned = sorted.filter((l) => l.is_pinned);
+  const custom = sorted.filter((l) => !l.is_pinned);
+
+  const handleDragEnd = (group) => (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIdx = group.findIndex((l) => String(l.id) === String(active.id));
+    const newIdx = group.findIndex((l) => String(l.id) === String(over.id));
+    if (oldIdx === -1 || newIdx === -1) return;
+    const reorderedGroup = arrayMove(group, oldIdx, newIdx);
+    const isPinnedGroup = reorderedGroup[0]?.is_pinned;
+    const newSorted = isPinnedGroup
+      ? [...reorderedGroup, ...custom]
+      : [...pinned, ...reorderedGroup];
+    const newIds = newSorted.map((l) => String(l.id));
+    setOrderedIds(newIds);
+    saveStoredOrder(newIds);
+  };
 
   const handleAdd = async (data) => {
     if (!isOwner) { showToast('只读模式'); return; }
@@ -26,9 +73,6 @@ export default function ListsView({ lists, setLists, counts }) {
     showToast('已删除');
   };
 
-  const pinned = lists.filter((l) => l.is_pinned);
-  const custom = lists.filter((l) => !l.is_pinned);
-
   return (
     <div className="animate-in pb-4">
       {isOwner && (
@@ -40,18 +84,30 @@ export default function ListsView({ lists, setLists, counts }) {
       {pinned.length > 0 && (
         <div className="mb-5">
           <div className="mono text-xs mb-2 px-1" style={{ color: 'var(--ink-faint)' }}>常驻清单</div>
-          <div className="space-y-3">
-            {pinned.map((list) => <ListCard key={list.id} list={list} counts={counts[list.id]} />)}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(pinned)}>
+            <SortableContext items={pinned.map((l) => String(l.id))} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {pinned.map((list) => (
+                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} isDraggable={isOwner} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
       {custom.length > 0 && (
         <div>
           <div className="mono text-xs mb-2 px-1" style={{ color: 'var(--ink-faint)' }}>我的清单</div>
-          <div className="space-y-3">
-            {custom.map((list) => <ListCard key={list.id} list={list} counts={counts[list.id]} onDelete={isOwner ? handleDelete : null} />)}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(custom)}>
+            <SortableContext items={custom.map((l) => String(l.id))} strategy={verticalListSortingStrategy}>
+              <div className="space-y-3">
+                {custom.map((list) => (
+                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} onDelete={isOwner ? handleDelete : null} isDraggable={isOwner} />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
       )}
 
@@ -68,7 +124,19 @@ export default function ListsView({ lists, setLists, counts }) {
   );
 }
 
-function ListCard({ list, counts, onDelete }) {
+function SortableListCard({ list, counts, onDelete, isDraggable }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: String(list.id),
+    disabled: !isDraggable,
+  });
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}>
+      <ListCard list={list} counts={counts} onDelete={onDelete} dragProps={isDraggable ? { ...attributes, ...listeners } : null} />
+    </div>
+  );
+}
+
+function ListCard({ list, counts, onDelete, dragProps }) {
   const [confirming, setConfirming] = useState(false);
   const total = counts?.total || 0;
   const done = counts?.done || 0;
@@ -76,13 +144,25 @@ function ListCard({ list, counts, onDelete }) {
 
   const handleDelete = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     if (!confirming) { setConfirming(true); setTimeout(() => setConfirming(false), 2000); return; }
     onDelete(list.id);
   };
 
   return (
-    <div className="card overflow-hidden">
-      <Link to={`/foyer/list/${list.id}`} style={{ display: 'block', padding: '14px 16px', textDecoration: 'none' }}>
+    <div className="card overflow-hidden" style={{ display: 'flex', alignItems: 'center' }}>
+      {dragProps && (
+        <div
+          {...dragProps}
+          style={{ display: 'flex', alignItems: 'center', padding: '0 6px 0 12px', color: 'var(--ink-faint)', cursor: 'grab', touchAction: 'none', flexShrink: 0, alignSelf: 'stretch' }}
+        >
+          <GripVertical size={15} />
+        </div>
+      )}
+      <Link
+        to={`/foyer/list/${list.id}`}
+        style={{ flex: 1, minWidth: 0, display: 'block', padding: dragProps ? '14px 0' : '14px 16px', paddingRight: 16, textDecoration: 'none' }}
+      >
         <div className="flex items-center gap-3">
           <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
             {list.emoji}
@@ -93,12 +173,6 @@ function ListCard({ list, counts, onDelete }) {
               {total === 0 ? '还没有事项' : `${done}/${total} 已完成`}
             </div>
           </div>
-          {onDelete && (
-            <button onClick={handleDelete} title={confirming ? '再点确认删除' : '删除清单'}
-              style={{ background: confirming ? 'var(--accent)' : 'none', border: 'none', borderRadius: 6, color: confirming ? 'white' : 'var(--ink-faint)', cursor: 'pointer', padding: 6, flexShrink: 0 }}>
-              <Trash2 size={14} />
-            </button>
-          )}
         </div>
         {total > 0 && (
           <div className="mt-3" style={{ height: 4, background: 'var(--line)', borderRadius: 2, overflow: 'hidden' }}>
@@ -106,6 +180,12 @@ function ListCard({ list, counts, onDelete }) {
           </div>
         )}
       </Link>
+      {onDelete && (
+        <button onClick={handleDelete} title={confirming ? '再点确认删除' : '删除清单'}
+          style={{ background: confirming ? 'var(--accent)' : 'none', border: 'none', borderRadius: 6, color: confirming ? 'white' : 'var(--ink-faint)', cursor: 'pointer', padding: 6, flexShrink: 0, marginRight: 8 }}>
+          <Trash2 size={14} />
+        </button>
+      )}
     </div>
   );
 }

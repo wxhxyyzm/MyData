@@ -3,6 +3,7 @@ export {
   Activity,
   ArrowRight,
   Archive,
+  GripVertical,
   BarChart3,
   RotateCcw,
   BookOpen,
