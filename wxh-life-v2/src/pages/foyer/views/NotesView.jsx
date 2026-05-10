@@ -190,11 +190,23 @@ function NoteModal({ initial, onConfirm, onCancel }) {
           {tags.filter((t) => !PRESET_TAGS.includes(t)).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {tags.filter((t) => !PRESET_TAGS.includes(t)).map((tag) => (
-                <span key={tag} onClick={() => toggleTag(tag)} className="mono text-xs px-2.5 py-1 rounded-full cursor-pointer"
-                  style={{ background: 'var(--accent)', color: 'white' }}>#{tag} ×</span>
+                <span key={tag} onClick={() => toggleTag(tag)} className="mono text-xs px-2.5 py-1 rounded-full cursor-pointer flex items-center gap-1"
+                  style={{ background: DEFAULT_TAG_COLOR.border, color: 'white', display: 'inline-flex' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.7)', flexShrink: 0, display: 'inline-block' }} />
+                  #{tag} ×
+                </span>
               ))}
             </div>
           )}
+          {tags.length > 0 && (() => {
+            const c = TAG_COLORS[tags[0]] || DEFAULT_TAG_COLOR;
+            return (
+              <div className="flex items-center gap-2 mt-3 px-3 py-2 rounded-lg" style={{ background: c.bg, borderLeft: `3px solid ${c.border}` }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.border, flexShrink: 0 }} />
+                <span className="mono text-xs" style={{ color: c.border }}>主标签：{tags[0]} · 卡片将显示此颜色</span>
+              </div>
+            );
+          })()}
         </div>
 
         <div className="flex gap-3">
