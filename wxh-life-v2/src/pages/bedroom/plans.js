@@ -33,7 +33,7 @@ export const DAILY_ITEMS = [
 export function getCalorieStatus(actual, target) {
   if (!actual || Number.isNaN(parseFloat(actual))) return null;
   const value = parseFloat(actual);
-  if (value > target) return 'over';
+  if (value > target * 1.1) return 'over';
   if (value < (target * 2) / 3) return 'under';
   return 'ok';
 }
