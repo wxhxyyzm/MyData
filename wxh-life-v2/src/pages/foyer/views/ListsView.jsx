@@ -10,7 +10,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Check, GripVertical, Plus, Trash2, X } from '../../../icons';
 import { useAuth } from '../../../hooks/useAuth';
 import { useToast } from '../../../hooks/useToast';
-import { deleteList, insertList, loadAllTodoCounts } from '../api';
+import { deleteList, insertList, loadAllTodoCounts, loadPendingPreviews } from '../api';
 import { LIST_EMOJIS } from '../presets';
 
 const ORDER_KEY = 'foyer_list_order';
@@ -27,10 +27,12 @@ export default function ListsView({ lists, setLists }) {
   const { showToast } = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [counts, setCounts] = useState({});
+  const [previews, setPreviews] = useState({});
   const [orderedIds, setOrderedIds] = useState(getStoredOrder);
 
   useEffect(() => {
     loadAllTodoCounts().then(setCounts).catch(() => {});
+    loadPendingPreviews().then(setPreviews).catch(() => {});
   }, []);
 
   const sensors = useSensors(
@@ -88,7 +90,7 @@ export default function ListsView({ lists, setLists }) {
             <SortableContext items={pinned.map((l) => String(l.id))} strategy={verticalListSortingStrategy}>
               <div className="space-y-3">
                 {pinned.map((list) => (
-                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} isDraggable={isOwner} />
+                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} preview={previews[list.id]} isDraggable={isOwner} />
                 ))}
               </div>
             </SortableContext>
@@ -103,7 +105,7 @@ export default function ListsView({ lists, setLists }) {
             <SortableContext items={custom.map((l) => String(l.id))} strategy={verticalListSortingStrategy}>
               <div className="space-y-3">
                 {custom.map((list) => (
-                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} onDelete={isOwner ? handleDelete : null} isDraggable={isOwner} />
+                  <SortableListCard key={list.id} list={list} counts={counts[list.id]} preview={previews[list.id]} onDelete={isOwner ? handleDelete : null} isDraggable={isOwner} />
                 ))}
               </div>
             </SortableContext>
@@ -124,19 +126,19 @@ export default function ListsView({ lists, setLists }) {
   );
 }
 
-function SortableListCard({ list, counts, onDelete, isDraggable }) {
+function SortableListCard({ list, counts, preview, onDelete, isDraggable }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: String(list.id),
     disabled: !isDraggable,
   });
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}>
-      <ListCard list={list} counts={counts} onDelete={onDelete} dragProps={isDraggable ? { ...attributes, ...listeners } : null} />
+      <ListCard list={list} counts={counts} preview={preview} onDelete={onDelete} dragProps={isDraggable ? { ...attributes, ...listeners } : null} />
     </div>
   );
 }
 
-function ListCard({ list, counts, onDelete, dragProps }) {
+function ListCard({ list, counts, preview, onDelete, dragProps }) {
   const [confirming, setConfirming] = useState(false);
   const total = counts?.total || 0;
   const done = counts?.done || 0;
@@ -177,6 +179,16 @@ function ListCard({ list, counts, onDelete, dragProps }) {
         {total > 0 && (
           <div className="mt-3" style={{ height: 4, background: 'var(--line)', borderRadius: 2, overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: pct === 100 ? '#16a34a' : 'var(--accent)', borderRadius: 2, transition: 'width 0.3s ease' }} />
+          </div>
+        )}
+        {preview?.length > 0 && (
+          <div className="mt-2.5" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {preview.map((todo) => (
+              <div key={todo.id} className="flex items-center gap-2 text-xs" style={{ color: 'var(--ink-soft)' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', border: '1.5px solid var(--ink-faint)', flexShrink: 0, display: 'inline-block' }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{todo.text}</span>
+              </div>
+            ))}
           </div>
         )}
       </Link>

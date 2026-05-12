@@ -75,6 +75,21 @@ export async function loadAllTodoCounts() {
   return counts;
 }
 
+export async function loadPendingPreviews() {
+  const { data, error } = await supabase
+    .from('foyer_todos')
+    .select('id, list_id, text')
+    .eq('done', false)
+    .order('created_at', { ascending: true });
+  if (error) return {};
+  const map = {};
+  (data || []).forEach((todo) => {
+    if (!map[todo.list_id]) map[todo.list_id] = [];
+    if (map[todo.list_id].length < 5) map[todo.list_id].push(todo);
+  });
+  return map;
+}
+
 export async function insertTodo(listId, text) {
   const todo = { id: genId(), list_id: listId, text, done: false, created_at: new Date().toISOString() };
   const { error } = await supabase.from('foyer_todos').insert(todo);
