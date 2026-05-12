@@ -5,6 +5,7 @@ import ErrorScreen from '../../components/ErrorScreen';
 import LoadingScreen from '../../components/LoadingScreen';
 import TopBar from '../../components/TopBar';
 import { ClipboardList, Lightbulb } from '../../icons';
+import { useAuth } from '../../hooks/useAuth';
 import { insertList, loadLists, loadNotes } from './api';
 import { DEFAULT_LISTS } from './presets';
 import ListView from './views/ListView';
@@ -17,6 +18,7 @@ const TABS = [
 ];
 
 export default function FoyerPage() {
+  const { isOwner } = useAuth();
   const [notes, setNotes] = useState([]);
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,7 +28,7 @@ export default function FoyerPage() {
     Promise.all([loadNotes(), loadLists()])
       .then(async ([notesData, listsData]) => {
         setNotes(notesData);
-        if (listsData.length === 0) {
+        if (listsData.length === 0 && isOwner) {
           const defaults = await Promise.all(DEFAULT_LISTS.map((l) => insertList(l)));
           setLists(defaults);
         } else {
@@ -35,7 +37,7 @@ export default function FoyerPage() {
       })
       .catch(setError)
       .finally(() => setLoading(false));
-  }, []);
+  }, [isOwner]);
 
   if (loading) return (
     <div data-room="foyer" className="min-h-screen" style={{ background: 'var(--bg)' }}>
