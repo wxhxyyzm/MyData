@@ -182,11 +182,11 @@ function ListCard({ list, counts, preview, onDelete, dragProps }) {
           </div>
         )}
         {preview?.length > 0 && (
-          <div className="mt-2.5" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="scrollbar-hide mt-2.5" style={{ maxHeight: '7.5rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {preview.map((todo) => (
-              <div key={todo.id} className="flex items-center gap-2 text-xs" style={{ color: 'var(--ink-soft)' }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', border: '1.5px solid var(--ink-faint)', flexShrink: 0, display: 'inline-block' }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{todo.text}</span>
+              <div key={todo.id} className="flex items-start gap-2 text-xs" style={{ color: 'var(--ink-soft)' }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', border: '1.5px solid var(--ink-faint)', flexShrink: 0, marginTop: 4, display: 'inline-block' }} />
+                <span>{todo.text}</span>
               </div>
             ))}
           </div>
@@ -207,8 +207,8 @@ function AddListModal({ onConfirm, onCancel }) {
   const [emoji, setEmoji] = useState('📋');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 p-4 sm:items-center" onClick={onCancel}>
-      <div className="card w-full max-w-md p-5 animate-in" style={{ boxShadow: '0 20px 70px rgba(0,0,0,0.15)' }} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/25 p-4 pb-24 sm:items-center sm:pb-4" onClick={onCancel}>
+      <div className="card w-full max-w-md p-5 animate-in" style={{ boxShadow: '0 20px 70px rgba(0,0,0,0.15)', maxHeight: '85vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <div className="display text-lg font-bold">新建清单</div>
           <button className="btn-ghost min-h-0 rounded-full p-2" onClick={onCancel}><X size={15} /></button>
