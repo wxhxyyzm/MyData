@@ -4,12 +4,21 @@ import { getCalorieTarget, getExercisePlan, DAILY_ITEMS } from '../plans';
 import { formatDate, getWeekday, todayStr } from '../../../lib/utils';
 import DailyItemCard from '../components/DailyItemCard';
 
+const draftKey = (date) => `bedroom_draft_${date}`;
+
 export default function CheckinTab({ phase, dates, activeDate, setActiveDate, current, onSave }) {
   const [formData, setFormData] = useState(current || {});
   const [dirty, setDirty] = useState(false);
 
-  // Reset local form when date or external data changes
   useEffect(() => {
+    const draft = localStorage.getItem(draftKey(activeDate));
+    if (draft) {
+      try {
+        setFormData(JSON.parse(draft));
+        setDirty(true);
+        return;
+      } catch { /* ignore */ }
+    }
     setFormData(current || {});
     setDirty(false);
   }, [activeDate, current]);
@@ -23,12 +32,17 @@ export default function CheckinTab({ phase, dates, activeDate, setActiveDate, cu
   const isSat = new Date(activeDate + 'T00:00:00').getDay() === 6;
 
   const updateField = (key, val) => {
-    setFormData((prev) => ({ ...prev, [key]: val }));
+    setFormData((prev) => {
+      const next = { ...prev, [key]: val };
+      localStorage.setItem(draftKey(activeDate), JSON.stringify(next));
+      return next;
+    });
     setDirty(true);
   };
 
   const handleSave = async () => {
     await onSave(formData);
+    localStorage.removeItem(draftKey(activeDate));
     setDirty(false);
   };
 
