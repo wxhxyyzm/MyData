@@ -32,7 +32,7 @@ export default function OverviewTab({ phase, dates, logMap, onSelectDate }) {
           </span>
           <span className="flex items-center gap-1.5">
             <span style={{ width: 12, height: 12, borderRadius: 3, background: '#ef4444', display: 'inline-block' }} />
-            超过目标
+            超标10%以上
           </span>
           <span className="flex items-center gap-1.5">
             <span style={{ width: 12, height: 12, borderRadius: 3, background: '#eab308', display: 'inline-block' }} />
